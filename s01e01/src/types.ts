@@ -1,14 +1,14 @@
-export const AVAILABLE_TAGS = [
-  "IT",
-  "transport",
-  "edukacja",
-  "medycyna",
-  "praca z ludźmi",
-  "praca z pojazdami",
-  "praca fizyczna",
-] as const;
+export const TAGS = {
+  "IT": "software development, programming, system administration, data engineering, cybersecurity, computers and technology",
+  "transport": "logistics, shipping, freight, driving, fleet management, supply chain, moving goods or people between locations",
+  "edukacja": "teaching, training, tutoring, academic work, education",
+  "medycyna": "healthcare, medicine, nursing, pharmacy, diagnostics, medical research",
+  "praca z ludźmi": "social work, customer service, HR, counseling, jobs focused on interacting with and helping people directly",
+  "praca z pojazdami": "mechanic work, vehicle repair, vehicle maintenance, operating heavy machinery or vehicles",
+  "praca fizyczna": "manual labor, construction, carpentry, plumbing, electrical work, physically demanding trades",
+} as const;
 
-export type Tag = (typeof AVAILABLE_TAGS)[number];
+export type Tag = keyof typeof TAGS;
 
 export interface RawPerson {
   name: string;

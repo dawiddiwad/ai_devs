@@ -1,26 +1,59 @@
 import OpenAI from "openai";
-import { Person, Tag, TagResult } from "./types";
-import { zodResponseFormat } from "openai/helpers/zod";
-import { z } from "zod";
+import { Person, Tag, TagResult, TAGS } from "./types";
 
-const TagResultSchema = z.object({
-  results: z.array(
-    z.object({
-      index: z.number(),
-      tags: z.array(
-        z.enum([
-          "IT",
-          "transport",
-          "edukacja",
-          "medycyna",
-          "praca z ludźmi",
-          "praca z pojazdami",
-          "praca fizyczna",
-        ])
-      ),
-    })
-  ),
-});
+interface TagResultItem {
+  index: number;
+  tags: Tag[];
+}
+
+interface TagResultResponse {
+  results: TagResultItem[];
+}
+
+function buildTagResponseSchema(): OpenAI.ResponseFormatJSONSchema["json_schema"] {
+  const tagEntries = (Object.keys(TAGS) as Tag[]).map(
+    (tag) => `${tag}: ${TAGS[tag]}`
+  );
+
+  return {
+    name: "tag_results",
+    strict: true,
+    schema: {
+      type: "object",
+      properties: {
+        results: {
+          type: "array",
+          description:
+            "One entry per input job description, matched by index.",
+          items: {
+            type: "object",
+            properties: {
+              index: {
+                type: "number",
+                description:
+                  "Zero-based index matching the input numbering.",
+              },
+              tags: {
+                type: "array",
+                description:
+                  "One or more tags that best classify the job description.",
+                items: {
+                  type: "string",
+                  enum: Object.keys(TAGS),
+                  description: `${tagEntries.join(": ")}.`,
+                },
+              },
+            },
+            required: ["index", "tags"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["results"],
+      additionalProperties: false,
+    },
+  };
+}
 
 export class JobTagger {
   private readonly client: OpenAI;
@@ -73,17 +106,23 @@ export class JobTagger {
 
     const response = await this.client.chat.completions.create({
       model: this.model,
+      temperature: process.env.OPENAI_TEMPERATURE ? parseFloat(process.env.OPENAI_TEMPERATURE)
+        : undefined,
       messages: [
         {
           role: "system",
-          content: this.buildSystemPrompt(),
+          content:
+            "You are a job classification expert. Given numbered job descriptions in Polish, assign one or more tags to each. A job can have multiple tags.",
         },
         {
           role: "user",
           content: jobList,
         },
       ],
-      response_format: zodResponseFormat(TagResultSchema, "tag_results"),
+      response_format: {
+        type: "json_schema",
+        json_schema: buildTagResponseSchema(),
+      },
     });
 
     const content = response.choices[0].message.content;
@@ -91,26 +130,11 @@ export class JobTagger {
       throw new Error("Empty response from OpenAI");
     }
 
-    const parsed = TagResultSchema.parse(JSON.parse(content));
+    const parsed: TagResultResponse = JSON.parse(content);
 
     return parsed.results.map((r) => ({
       index: batch[r.index].index,
-      tags: r.tags as Tag[],
+      tags: r.tags,
     }));
-  }
-
-  private buildSystemPrompt(): string {
-    return `You are a job classification expert. Given numbered job descriptions in Polish, assign one or more tags from the following list to each.
-
-Available tags and their meanings:
-- IT: software development, programming, system administration, data engineering, cybersecurity, anything related to computers and technology
-- transport: logistics, shipping, freight, driving, fleet management, supply chain, moving goods or people between locations
-- edukacja: teaching, training, tutoring, academic work, education
-- medycyna: healthcare, medicine, nursing, pharmacy, diagnostics, medical research
-- praca z ludźmi: social work, customer service, HR, counseling, any job focused on interacting with and helping people directly
-- praca z pojazdami: mechanic work, vehicle repair, vehicle maintenance, operating heavy machinery or vehicles
-- praca fizyczna: manual labor, construction, carpentry, plumbing, electrical work, any physically demanding trade
-
-A job can have multiple tags. Respond with the index matching the input numbering and the assigned tags for each entry.`;
   }
 }
