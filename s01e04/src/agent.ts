@@ -32,6 +32,7 @@ export async function runAgent(): Promise<string> {
     const response = await openai.chat.completions.create({
       model,
       messages,
+      max_completion_tokens: 10000,
       tools: toolDefinitions,
     })
 
