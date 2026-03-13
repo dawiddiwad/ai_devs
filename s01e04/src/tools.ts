@@ -177,7 +177,7 @@ export async function analyzeImage(
 export async function submitDeclaration(declaration: string): Promise<string> {
   const apiKey = process.env.AI_DEVS_API_KEY || process.env.HUB_API_KEY || ""
   console.log(`  [submit_declaration] Submitting to ${VERIFY_URL}...`)
-  console.log(`  Declaration preview:\n${declaration.slice(0, 300)}...`)
+  console.log(`  Declaration:\n${declaration}`)
 
   try {
     const response = await axios.post(
@@ -191,7 +191,16 @@ export async function submitDeclaration(declaration: string): Promise<string> {
     )
 
     console.log(`  [submit_declaration] Response: ${JSON.stringify(response.data)}`)
-    return JSON.stringify({ response: response.data })
+
+    const respString = typeof response.data === "string" ? response.data : JSON.stringify(response.data)
+    const flagMatch = respString.match(/\{FLG:[A-Za-z0-9_+-]+\}/)
+    const flag = flagMatch ? flagMatch[0] : undefined
+    if (flag) { 
+      console.log(`Task successfully completed.`)
+      console.log(`✅ FLAG FOUND: ${flag}`)
+      process.exit(0)
+    } else return JSON.stringify({ response: response.data })
+
   } catch (err: any) {
     const errData = err.response?.data || err.message
     console.log(`  [submit_declaration] Error: ${JSON.stringify(errData)}`)
