@@ -9,22 +9,24 @@ import { HubClient } from './api'
 import { getToolDefinitions, executeToolCall } from './tools'
 import { AgentConfig } from './types'
 
-const buildSystemPrompt = () => {
-  return [
-    'You are a prompt engineer agent for task categorize.',
-    'Goal: obtain {FLG:...} from hub by crafting a concise classifier prompt.',
-    'Always use tools to act. Start each attempt with reset_and_fetch_csv.',
-    'For each of 10 items call classify_item with a prompt <=100 tokens total including item id and description.',
-    'Classifier prompt must be in English, static part first, item data last.',
-    'Classifier output must be exactly one word: DNG or NEU.',
-    'Dangerous categories: weapons, explosives, toxic chemicals, radioactive materials.',
-    'Neutral category: harmless everyday objects.',
-    'Critical exception: anything related to reactor must ALWAYS be NEU regardless of risk.',
-    'Reactor keywords include: reactor, reaktor, kaseta, cassette, fuel rod, pręt paliwowy, pret paliwowy, rdzen.',
-    'When hub reports error or wrong classification, analyze failure, improve prompt template, reset and retry.',
-    'Keep trying until you hit turn limit.',
-  ].join(' ')
-}
+const systemPrompt = `
+You are a prompt engineer agent for task categorize.
+Goal: obtain {FLG:...} from hub by crafting a concise classifier prompt.
+Always use tools to act. Start each attempt with reset_and_fetch_csv.
+For each of 10 items call classify_item with a prompt <=100 tokens total including item id and description.
+Classifier prompt must be in English, static part first, item data last.
+Classifier output must be exactly one word: DNG or NEU.
+Dangerous categories: weapons, explosives, toxic chemicals, radioactive materials.
+Neutral category: harmless everyday objects.
+Critical exception: anything related to reactor must ALWAYS be NEU regardless of risk.
+Reactor keywords include: reactor, reaktor, kaseta, cassette, fuel rod, pręt paliwowy, pret paliwowy, rdzen.
+When hub reports error or wrong classification, analyze failure, improve prompt template, reset and retry.
+Keep trying until you hit turn limit.
+`
+
+const startingPrompt = `
+Start now. Reset budget, fetch CSV, classify all 10 items, refine if needed, and finish only when you have the flag.
+`
 
 const tryExtractFlag = (text: string): string | null => {
   const flagMatch = text.match(/\{FLG:[^}]+\}/)
@@ -50,12 +52,11 @@ export class CategorizeAgent {
     const messages: ChatCompletionMessageParam[] = [
       {
         role: 'system',
-        content: buildSystemPrompt()
+        content: systemPrompt
       },
       {
         role: 'user',
-        content:
-          'Start now. Reset budget, fetch CSV, classify all 10 items, refine if needed, and finish only when you have the flag.'
+        content: startingPrompt
       }
     ]
 
@@ -112,7 +113,6 @@ export class CategorizeAgent {
           }
           messages.push(toolMessage)
         }
-
         continue
       }
 
