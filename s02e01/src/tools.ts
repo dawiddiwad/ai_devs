@@ -1,5 +1,7 @@
+import { ChatCompletionFunctionTool } from 'openai/resources/chat/completions/completions'
 import { HubClient } from './api'
 import { ToolResultEnvelope } from './types'
+import strict from 'node:assert/strict'
 
 const tryParseJson = (value: string): Record<string, unknown> => {
   try {
@@ -9,8 +11,7 @@ const tryParseJson = (value: string): Record<string, unknown> => {
   }
 }
 
-export const getToolDefinitions = () => {
-  return [
+export const tools: ChatCompletionFunctionTool[] = [
     {
       type: 'function' as const,
       function: {
@@ -21,7 +22,8 @@ export const getToolDefinitions = () => {
           type: 'object',
           properties: {},
           additionalProperties: false
-        }
+        },
+        strict: true
       }
     },
     {
@@ -41,49 +43,49 @@ export const getToolDefinitions = () => {
           },
           required: ['prompt'],
           additionalProperties: false
-        }
+        },
+        strict: true
       }
     }
-  ]
-}
+]
 
-export const executeToolCall = async (
-  toolName: string,
-  rawArguments: string,
+export const executeTool = async (
+  name: string,
+  parameters: string,
   hubClient: HubClient
 ): Promise<string> => {
-  const args = tryParseJson(rawArguments)
+  const args = tryParseJson(parameters)
 
   const buildResult = (result: ToolResultEnvelope): string => {
     const serialized = JSON.stringify(result)
-    console.log(`[tool:${toolName}] ${serialized}`)
+    console.log(`[tool:${name}] ${serialized}`)
     return serialized
   }
 
-  if (toolName === 'reset_and_fetch_csv') {
+  if (name === 'reset_and_fetch_csv') {
     try {
       const data = await hubClient.resetAndFetchCsv()
       return buildResult({
-        tool: toolName,
+        tool: name,
         ok: true,
         data
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown reset/fetch error'
       return buildResult({
-        tool: toolName,
+        tool: name,
         ok: false,
         error: message
       })
     }
   }
 
-  if (toolName === 'classify_item') {
+  if (name === 'classify_item') {
     const prompt = typeof args.prompt === 'string' ? args.prompt : ''
 
     if (prompt.length === 0) {
       return buildResult({
-        tool: toolName,
+        tool: name,
         ok: false,
         error: 'Missing prompt argument'
       })
@@ -92,14 +94,14 @@ export const executeToolCall = async (
     try {
       const data = await hubClient.classifyPrompt(prompt)
       return buildResult({
-        tool: toolName,
+        tool: name,
         ok: true,
         data
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown classify error'
       return buildResult({
-        tool: toolName,
+        tool: name,
         ok: false,
         error: message
       })
@@ -107,8 +109,8 @@ export const executeToolCall = async (
   }
 
   return buildResult({
-    tool: toolName,
+    tool: name,
     ok: false,
-    error: `Unknown tool ${toolName}`
+    error: `Unknown tool ${name}`
   })
 }
