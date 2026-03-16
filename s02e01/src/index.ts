@@ -6,42 +6,21 @@ import { HubClient } from './api'
 
 dotenv.config()
 
-const requireEnv = (name: string, fallback?: string): string => {
-  const primaryValue = process.env[name]
-  if (primaryValue && primaryValue.trim().length > 0) {
-    return primaryValue
-  }
-
-  if (fallback) {
-    const fallbackValue = process.env[fallback]
-    if (fallbackValue && fallbackValue.trim().length > 0) {
-      return fallbackValue
-    }
-  }
-
-  throw new Error(`Missing required environment variable: ${name}${fallback ? ` or ${fallback}` : ''}`)
-}
-
-const parseTemperature = (value: string | undefined): number | undefined => {
-  if (!value) {
-    return undefined
-  }
-
-  const parsed = Number(value)
-  if (Number.isNaN(parsed)) {
-    return undefined
-  }
-
-  return parsed
-}
-
 const main = async () => {
-  const hubApiKey = requireEnv('API_KEY', 'AI_DEVS_API_KEY')
-  const openAiApiKey = requireEnv('OPENAI_API_KEY')
+  const hubApiKey = process.env.API_KEY ?? process.env.AI_DEVS_API_KEY
+  if (!hubApiKey) {
+    throw new Error('Missing required environment variable: API_KEY or AI_DEVS_API_KEY')
+  }
+  const openAiApiKey = process.env.OPENAI_API_KEY
+  if (!openAiApiKey) {
+    throw new Error('Missing required environment variable: OPENAI_API_KEY')
+  }
+
   const taskName = process.env.AI_DEVS_TASK_NAME ?? 'categorize'
   const model = process.env.OPENAI_MODEL ?? 'gpt-5-mini'
   const baseURL = process.env.OPENAI_BASE_URL
-  const temperature = parseTemperature(process.env.OPENAI_TEMPERATURE)
+  const maxTurns = process.env.AGENT_MAX_TURNS ? Number(process.env.AGENT_MAX_TURNS) : 20
+  const temperature = process.env.OPENAI_TEMPERATURE ? Number(process.env.OPENAI_TEMPERATURE) : undefined
 
   const hubClient = new HubClient({
     apiKey: hubApiKey,
@@ -58,7 +37,7 @@ const main = async () => {
   const agent = new CategorizeAgent(openai, hubClient, {
     model,
     temperature,
-    maxTurns: process.env.AGENT_MAX_TURNS ? Number(process.env.AGENT_MAX_TURNS) : 20
+    maxTurns
   })
 
   const flag = await agent.run()
