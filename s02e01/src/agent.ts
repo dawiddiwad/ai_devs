@@ -6,7 +6,7 @@ import {
 } from 'openai/resources/chat/completions'
 
 import { HubClient } from './api'
-import { getToolDefinitions, executeToolCall } from './tools'
+import { tools, executeTool } from './tools'
 import { AgentConfig } from './types'
 
 const systemPrompt = `
@@ -48,7 +48,6 @@ export class CategorizeAgent {
   }
 
   async run(): Promise<string> {
-    const tools = getToolDefinitions()
     const messages: ChatCompletionMessageParam[] = [
       {
         role: 'system',
@@ -66,7 +65,7 @@ export class CategorizeAgent {
         temperature: this.config.temperature,
         messages,
         tools,
-        tool_choice: 'auto'
+        tool_choice: 'required'
       })
 
       const message = completion.choices[0]?.message
@@ -98,7 +97,7 @@ export class CategorizeAgent {
             continue
           }
 
-          const toolResult = await executeToolCall(
+          const toolResult = await executeTool(
             toolCall.function.name,
             toolCall.function.arguments,
             this.hubClient
