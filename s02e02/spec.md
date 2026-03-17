@@ -75,7 +75,7 @@ These tools are registered with the OpenAI chat completions API via the `tools` 
 
 ### 3.1 `analyze_board`
 
-**Description:** Fetches the current electricity board PNG, splits it into 9 cell images, analyzes each cell with a vision model, and returns the cable connections for every cell.
+**Description:** Fetches the current electricity board PNG and sends the whole image to a vision model for analysis, returning the cable connections for every cell.
 
 **Input Schema:**
 ```json
@@ -88,9 +88,8 @@ These tools are registered with the OpenAI chat completions API via the `tools` 
 
 **Behavior:**
 1. GET `https://***hub_endpoint***/data/{API_KEY}/electricity.png` → download PNG buffer.
-2. Split the image into a 3×3 grid of 9 cell images using `sharp`.
-3. For each cell image, send it to a vision model with a prompt requesting the edges (T/R/B/L) that have cable connections.
-4. Aggregate results into a structured response.
+2. Send the full board image to a vision model with a prompt requesting the edges (T/R/B/L) that have cable connections for each of the 9 cells.
+3. Parse the vision model's structured JSON response into the board state.
 
 **Return value:**
 ```json
@@ -111,7 +110,7 @@ These tools are registered with the OpenAI chat completions API via the `tools` 
 
 ### 3.2 `analyze_target`
 
-**Description:** Fetches the solved electricity board PNG, splits it into 9 cell images, analyzes each cell with a vision model, and returns the target cable connections for every cell. Result is cached — subsequent calls return the cached value.
+**Description:** Fetches the solved electricity board PNG and sends the whole image to a vision model for analysis, returning the target cable connections for every cell. Result is cached — subsequent calls return the cached value.
 
 **Input Schema:**
 ```json
@@ -125,7 +124,7 @@ These tools are registered with the OpenAI chat completions API via the `tools` 
 **Behavior:**
 1. If cached result exists, return it immediately.
 2. GET `https://***hub_endpoint***/i/solved_electricity.png` → download PNG buffer.
-3. Same splitting and vision analysis as `analyze_board`.
+3. Same whole-image vision analysis as `analyze_board`.
 4. Cache and return the result.
 
 **Return value:** Same format as `analyze_board`.
@@ -239,7 +238,7 @@ START
 | `axios` | HTTP requests to hub API and image download (already in package.json) |
 | `dotenv` | Load environment variables (already in package.json) |
 | `openai` | OpenAI SDK for LLM agent loop and vision model calls (already in package.json) |
-| `sharp` | Image processing: splitting board PNG into 9 cell images |
+| `sharp` | Image processing (available if needed for future enhancements) |
 
 ### Environment Variables (`.env`)
 ```env
@@ -265,8 +264,8 @@ src/
 
 ## 6. Key Implementation Notes
 
-1. **Image splitting is critical.** Vision models perform significantly better analyzing individual cells than the full 3×3 board. Use `sharp` to divide the downloaded PNG into 9 equally-sized cell images before sending to the vision model.
-2. **Vision model prompt matters.** The prompt sent to the vision model for each cell should be very specific: ask which edges (Top, Right, Bottom, Left) have cable connections, and request a structured response (e.g. comma-separated list of T, R, B, L). Include an example in the prompt.
+1. **Whole-image analysis.** The board image may not be perfectly centered and may contain content outside the grid. Instead of splitting the image into cells (which can misalign), send the entire board image to the vision model in a single call. This is cheaper (1 API call vs 9) and more robust to layout variations.
+2. **Vision model prompt matters.** The prompt sent to the vision model should ask it to identify the 3×3 grid of cable cells, and for each cell report which edges (Top, Right, Bottom, Left) have cable connections. Request a structured JSON response with all 9 cells. Include an example in the prompt.
 3. **Cache the target analysis.** The solved image at `https://***hub_endpoint***/i/solved_electricity.png` is static. Cache the vision analysis result so `analyze_target` only calls the vision model once per run.
 4. **Verify after every batch of rotations.** After executing all computed rotations, re-analyze the board to confirm correctness. Vision model misreads are the primary source of errors.
 5. **Vision model selection.** The task recommends `google/gemini-3-flash-preview` for best results. The implementation supports configurable vision model via environment variables, using the OpenAI SDK's base URL override to route to OpenRouter or other providers.
@@ -281,8 +280,8 @@ src/
 
 - [ ] LLM agent loop runs using OpenAI SDK with tool calling
 - [ ] Agent has access to `analyze_board`, `analyze_target`, `rotate_tile`, and `reset_board` tools
-- [ ] Board and target PNG images are downloaded and split into 9 cell images using `sharp`
-- [ ] Each cell image is analyzed by a vision model to identify cable connections (T/R/B/L)
+- [ ] Board and target PNG images are downloaded and sent as whole images to the vision model
+- [ ] The vision model analyzes the full board image and returns cable connections (T/R/B/L) for all 9 cells
 - [ ] Agent compares current vs target connections and computes required rotations (0-3 per cell)
 - [ ] Agent sends rotation commands via API for each cell needing adjustment
 - [ ] Agent verifies board state after rotations by re-analyzing the image
