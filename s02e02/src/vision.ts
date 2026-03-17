@@ -3,14 +3,16 @@ import { BoardState, Edge } from "./types"
 
 const analyzePrompt = `You are analyzing a 3x3 electrical cable puzzle board image. The board contains 9 cells arranged in a grid.
 Each cell is addressed as AxB where A=row (1-3, top to bottom) and B=column (1-3, left to right).
-For each cell, identify which edges have cable/pipe connections in the cell. Use the following single-letter notation for edges:
-- T (TOP)
-- R (RIGHT)
-- B (BOTTOM)
-- L (LEFT)
 
-The image may contain labels or content outside the grid — focus only on the 3x3 grid of cable cells.
-Return data that strictly matches the provided JSON schema. Do not include markdown, prose, or extra keys.`
+# Task
+For each cell, identify which edges have cable/pipe connections. Use the following edge names:
+- TOP
+- RIGHT
+- BOTTOM
+- LEFT
+
+# Important
+The image may contain labels or content outside the grid — focus only on the 3x3 grid of cable cells.`
 
 const POSITIONS = [
 	"1x1", "1x2", "1x3",
@@ -18,7 +20,19 @@ const POSITIONS = [
 	"3x1", "3x2", "3x3",
 ]
 
-const EDGE_VALUES: Edge[] = ["T", "R", "B", "L"]
+const EDGE_VALUES: Edge[] = ["TOP", "RIGHT", "BOTTOM", "LEFT"]
+
+const normalizeEdge = (rawEdge: string): Edge | null => {
+	const edge = rawEdge.trim().toUpperCase()
+
+	if (edge === "T") return "TOP"
+	if (edge === "R") return "RIGHT"
+	if (edge === "B") return "BOTTOM"
+	if (edge === "L") return "LEFT"
+	if ((EDGE_VALUES as string[]).includes(edge)) return edge as Edge
+
+	return null
+}
 
 const BOARD_JSON_SCHEMA = {
 	name: "board_state",
@@ -31,11 +45,11 @@ const BOARD_JSON_SCHEMA = {
 		properties: POSITIONS.reduce<Record<string, unknown>>((acc, pos) => {
 			acc[pos] = {
 				type: "array",
-				description: `Connected edges for cell ${pos} (T=TOP, R=RIGHT, B=BOTTOM, L=LEFT).`,
+				description: `Connected edges for cell ${pos} (TOP, RIGHT, BOTTOM, LEFT).`,
 				items: {
 					type: "string",
 					enum: EDGE_VALUES,
-					description: "Single connected edge as single-letter string, ex: 'T' for TOP.",
+					description: "Single connected edge as full-name string, e.g. 'TOP'.",
 				},
 				uniqueItems: true,
 			}
@@ -81,8 +95,8 @@ const parseBoardResponse = (content: string): BoardState => {
 		}
 
 		const edges: Edge[] = (Array.isArray(raw) ? raw : String(raw).split(/[,\s]+/))
-			.map((e: string) => String(e).trim().toUpperCase())
-			.filter((e: string): e is Edge => ["T", "R", "B", "L"].includes(e))
+			.map((e: string) => normalizeEdge(String(e)))
+			.filter((e: Edge | null): e is Edge => e !== null)
 
 		board[pos] = edges
 	}

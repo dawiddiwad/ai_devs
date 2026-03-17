@@ -1,4 +1,4 @@
-export type Edge = "T" | "R" | "B" | "L"
+export type Edge = "TOP" | "RIGHT" | "BOTTOM" | "LEFT"
 
 export type CellPosition = string
 
