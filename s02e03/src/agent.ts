@@ -5,19 +5,22 @@ import { toolDefinitions, executeTool } from './tools'
 import { logger } from './logger'
 
 const FLAG_PATTERN = /\{FLG:[^}]+\}/
-const MAX_ITERATIONS = 20
+const MAX_ITERATIONS = 30
 const MAX_RETRIES = 5
 
 export async function runAgent(): Promise<void> {
 	const client = new OpenAI()
 	const model = process.env.OPENAI_MODEL || 'gpt-5-mini'
 
+	logger.agent('info', 'Using orchestrator model', { model })
+	logger.agent('info', 'Using compressor model', { model: process.env.OPENAI_COMPRESSOR_MODEL || 'gpt-4.1-mini' })
+
 	const messages: ChatCompletionMessageParam[] = [
 		{ role: 'system', content: SYSTEM_PROMPT },
 		{
 			role: 'user',
 			content:
-				'Fetch the power plant failure logs, analyze them, compress the critical events to fit within 1500 tokens, and submit them. Iterate based on feedback until you get the flag.',
+				'Fetch the power plant failure logs, search for critical events, compress them, and submit. Iterate based on technician feedback until you get the flag.',
 		},
 	]
 
@@ -32,6 +35,8 @@ export async function runAgent(): Promise<void> {
 			tools: toolDefinitions,
 			temperature: process.env.OPENAI_TEMPERATURE ? parseFloat(process.env.OPENAI_TEMPERATURE) : undefined,
 		})
+
+		logger.agent('debug', 'Orchestrator token usage', { usage: response.usage })
 
 		const choice = response.choices[0]
 		const assistantMessage = choice.message
@@ -50,9 +55,7 @@ export async function runAgent(): Promise<void> {
 			for (const toolCall of functionCalls) {
 				const { name, arguments: args } = toolCall.function
 
-				logger.agent('info', `Dispatching tool: ${name}`, {
-					args: name === 'submit_answer' ? '(logs omitted)' : args,
-				})
+				logger.agent('info', `Dispatching tool: ${name}`, { args })
 
 				const result = await executeTool(name, args)
 

@@ -22,11 +22,18 @@ A POST request to the verify endpoint with a JSON payload containing condensed l
 
 ---
 
-## 2. Agent Persona & Prompt Strategy
+## 2. Dual-Model Architecture
 
-### System Prompt (for the inner LLM agent)
+### Design Principle
 
-```markdown
+The system uses two models to optimize token consumption and accuracy:
+
+1. **Orchestrator (big model)** — Runs the agent loop, decides which tools to call, reads hub feedback. **Never sees raw log content.** Only receives metadata (line counts, token counts, match counts) and API responses.
+2. **Compressor (small model)** — Handles log compression into ≤1500 tokens. Receives raw log lines and compression instructions. Output is cached internally and auto-attached to submissions.
+
+### Orchestrator System Prompt
+
+````markdown
 You are a power plant failure log analyst agent. Your job is to analyze a large log file from a power plant that experienced a failure yesterday, extract the most critical events, compress them into a concise summary, and submit them for technician review.
 
 ## Your workflow
@@ -40,17 +47,11 @@ You are a power plant failure log analyst agent. Your job is to analyze a large 
 
 ## Rules
 
-- ALWAYS fetch logs first before any analysis
-- Focus on events related to: power supply, cooling systems, water pumps, software failures, reactor components, emergency systems, and other plant subsystems
-- Each output line must follow format: [YYYY-MM-DD HH:MM] [LEVEL] COMPONENT_ID description
-- One event per line, lines separated by \n
-- You may shorten and paraphrase descriptions but MUST preserve: timestamp, severity level, component identifier
-- ALWAYS count tokens before submitting — never exceed 1500 tokens
-- Use conservative token estimation (3.5 chars per token)
-- When you receive feedback from technicians, carefully read which subsystems or events are missing and search the logs specifically for those
-- After receiving feedback, use search_logs with targeted queries to find missing information
-- NEVER guess or fabricate log entries — only use data from the actual log file
-```
+The orchestrator never sees raw log content. It receives only metadata and API responses. See `src/prompts.ts` for the full prompt.
+
+### Compressor System Prompt
+
+The compressor receives raw log lines and instructions, and outputs compressed log entries in the required format. See `src/prompts.ts` for the full prompt.
 
 ---
 
@@ -58,145 +59,58 @@ You are a power plant failure log analyst agent. Your job is to analyze a large 
 
 ### 3.1 `fetch_logs`
 
-**Description:** Downloads the full log file from the remote URL and caches it locally in memory. Must be called once before any search operations.
+**Description:** Downloads the full log file from the remote URL and caches it locally in memory. Resets search buffer and cached compression.
 
-**Input Schema:**
+**Input Schema:** `{}` (no parameters)
 
-```json
-{
-	"type": "object",
-	"properties": {},
-	"required": []
-}
-```
-
-**Behavior:**
-
-- GET request to the log URL (constructed from env var `AI_DEVS_API_KEY`)
-- Stores the full text in a module-level variable for subsequent searches
-- Logs the total line count and approximate token count
-- Returns a summary: total lines, total tokens, first/last timestamps
-
-**Return value:**
-
-```json
-{
-	"totalLines": 12345,
-	"approximateTokens": 50000,
-	"firstTimestamp": "2026-02-25 00:00",
-	"lastTimestamp": "2026-02-26 23:59",
-	"sample": "first 5 lines of the log"
-}
-```
+**Returns to orchestrator:** Metadata only — `{ totalLines, approximateTokens, firstTimestamp, lastTimestamp }`. No raw log content.
 
 ### 3.2 `search_logs`
 
-**Description:** Searches the cached log file using a regex pattern or keyword. Returns matching lines. Use this to find specific events, subsystems, or severity levels.
+**Description:** Searches the cached log file using a regex pattern. Matching lines are added to an internal buffer (deduplicated). The orchestrator sees only match counts, not the log lines.
 
 **Input Schema:**
 
 ```json
 {
-	"type": "object",
-	"properties": {
-		"query": {
-			"type": "string",
-			"description": "Regex pattern to search for in the log file. Examples: 'CRIT|ERRO|WARN', 'ECCS', 'pump|cooling', 'PWR\\d+'"
-		},
-		"maxResults": {
-			"type": "number",
-			"description": "Maximum number of matching lines to return. Default: 100"
-		}
-	},
-	"required": ["query"]
+	"query": "string (regex pattern)",
+	"maxResults": "number (default: 200)"
 }
 ```
+````
 
-**Behavior:**
+**Returns to orchestrator:** `{ matchCount, newLinesAdded, totalBufferSize, bufferApproxTokens }`. No raw log content.
 
-- Applies the regex pattern (case-insensitive) against each line of the cached log
-- Returns up to `maxResults` matching lines
-- Logs the query and result count
+### 3.3 `compress_logs`
 
-**Return value:**
-
-```json
-{
-	"matchCount": 42,
-	"returnedCount": 42,
-	"lines": "[2026-02-26 06:04] [CRIT] ECCS8 runaway outlet temp..."
-}
-```
-
-### 3.3 `count_tokens`
-
-**Description:** Estimates the token count of a given text string using a conservative heuristic (3.5 characters per token).
+**Description:** Sends the search buffer to a small compressor model with instructions. The compressed output is cached for submission. The orchestrator sees only stats.
 
 **Input Schema:**
 
 ```json
 {
-	"type": "object",
-	"properties": {
-		"text": {
-			"type": "string",
-			"description": "The text to count tokens for"
-		}
-	},
-	"required": ["text"]
+	"instructions": "string (what to focus on, feedback to address)",
+	"mergeWithPrevious": "boolean (default: false, merge new findings with previous compression)"
 }
 ```
 
-**Behavior:**
+**Returns to orchestrator:** `{ lineCount, tokenCount, withinLimit }`. No compressed log content.
 
-- Calculates `Math.ceil(text.length / 3.5)`
-- Returns the count and whether it's within the 1500 token limit
+### 3.4 `clear_search_buffer`
 
-**Return value:**
+**Description:** Clears the internal search buffer. Use before starting a fresh set of searches.
 
-```json
-{
-	"tokenCount": 1234,
-	"withinLimit": true,
-	"limit": 1500
-}
-```
+**Input Schema:** `{}` (no parameters)
 
-### 3.4 `submit_answer`
+**Returns:** `{ cleared: true, previousSize }`
 
-**Description:** Submits the compressed logs to Centrala for verification. Returns the technician feedback or the flag.
+### 3.5 `submit_answer`
 
-**Input Schema:**
+**Description:** Submits the cached compressed logs to Centrala. No parameters needed — uses the latest compression output automatically.
 
-```json
-{
-	"type": "object",
-	"properties": {
-		"logs": {
-			"type": "string",
-			"description": "The compressed log string with events separated by \\n"
-		}
-	},
-	"required": ["logs"]
-}
-```
+**Input Schema:** `{}` (no parameters)
 
-**Behavior:**
-
-- POST to `https://***hub_endpoint***/verify` with body `{ apikey, task: "failure", answer: { logs } }`
-- Parses the response for flag pattern `{FLG:...}`
-- If flag found: logs it and signals process termination with exit code 0
-- If no flag: returns the feedback text for the agent to iterate on
-
-**Return value:**
-
-```json
-{
-	"success": true,
-	"flagFound": false,
-	"response": "Technician feedback text..."
-}
-```
+**Returns to orchestrator:** `{ success, flagFound, flag?, response }`. The response field contains technician feedback or the flag.
 
 ---
 
@@ -205,23 +119,21 @@ You are a power plant failure log analyst agent. Your job is to analyze a large 
 ```text
 START
   │
-  ├─ 1. Agent calls fetch_logs → gets log file metadata
+  ├─ 1. Orchestrator calls fetch_logs → gets metadata (line count, timestamps)
   │
-  ├─ 2. Agent calls search_logs (query: "WARN|ERRO|CRIT") → gets critical events
+  ├─ 2. Orchestrator calls search_logs ("WARN|ERRO|CRIT") → gets match count
+  │     (matched lines stored in internal buffer, invisible to orchestrator)
   │
-  ├─ 3. Agent analyzes events, builds compressed log string
-  │     (LLM reasoning: select most relevant, shorten descriptions)
+  ├─ 3. Orchestrator calls compress_logs with instructions
+  │     → Small model compresses buffer → cached → orchestrator sees token count
   │
-  ├─ 4. Agent calls count_tokens → verifies ≤1500
-  │     If over limit → agent further compresses and recounts
+  ├─ 4. Orchestrator calls submit_answer → cached compressed logs sent automatically
   │
-  ├─ 5. Agent calls submit_answer with compressed logs
-  │
-  ├─ 6. Check response:
+  ├─ 5. Check response:
   │     ├─ Flag found → log flag, exit(0) ✓
-  │     └─ Feedback received → agent reads feedback
-  │           ├─ Agent calls search_logs with targeted queries
-  │           ├─ Agent refines compressed logs
+  │     └─ Feedback received → orchestrator reads feedback
+  │           ├─ Orchestrator calls search_logs with targeted queries
+  │           ├─ Orchestrator calls compress_logs (mergeWithPrevious=true) with feedback
   │           └─ Go to step 4 (max 5 retries)
   │
   └─ END (flag captured or max retries exhausted)
@@ -229,10 +141,11 @@ START
 
 ### Key Decision Points
 
-- **Pre-filtering**: Regex filter for WARN/ERRO/CRIT lines reduces volume before LLM sees the data
-- **Feedback loop**: Technician feedback specifies missing subsystems — agent must search logs for those specific components and incorporate them
-- **Token budget**: Agent must always verify token count before submission; if over 1500, it must compress further
-- **Flag detection**: Programmatic regex match on `\{FLG:[^}]+\}` — not LLM-based
+- **Two-model split**: Big model orchestrates, small model compresses. Raw logs never enter the orchestrator context.
+- **Search buffer**: Accumulates results from multiple `search_logs` calls. Deduplicated automatically.
+- **Cached compression**: `compress_logs` output is cached and auto-attached to `submit_answer`.
+- **Feedback loop**: Technician feedback goes to orchestrator, which issues targeted searches and re-compresses.
+- **Flag detection**: Programmatic regex match on `\{FLG:[^}]+\}` — not LLM-based.
 
 ---
 
@@ -254,6 +167,7 @@ No new packages required beyond baseline. Using existing:
 ```env
 OPENAI_API_KEY=your-openai-api-key-here
 OPENAI_MODEL=gpt-5-mini
+OPENAI_COMPRESSOR_MODEL=gpt-4.1-mini
 AI_DEVS_API_KEY=your-ai-devs-api-key-here
 AI_DEVS_TASK_NAME=failure
 ```
@@ -263,9 +177,10 @@ AI_DEVS_TASK_NAME=failure
 ```text
 src/
   index.ts          # Entry point — bootstraps and runs the agent
-  agent.ts          # Agent loop: chat completion + tool dispatch
-  tools.ts          # Tool definitions (ChatCompletionTool[]) and handler implementations
-  prompts.ts        # System prompt constant
+  agent.ts          # Agent loop: orchestrator model + tool dispatch
+  tools.ts          # Tool definitions and handlers (buffer, cache, API calls)
+  compressor.ts     # Small model compression logic
+  prompts.ts        # System prompts for orchestrator and compressor
   logger.ts         # Structured logging (agent/tool/api levels)
 ```
 
@@ -273,27 +188,30 @@ src/
 
 ## 6. Key Implementation Notes
 
-1. **Regex pre-filter before LLM**: First search for `WARN|ERRO|CRIT` to get the subset of important lines. This avoids sending the full log to the LLM and reduces cost.
-2. **Conservative token heuristic**: Use 3.5 chars/token (slightly conservative) to avoid exceeding the 1500 token hard limit.
-3. **Flag capture is programmatic**: Parse response text with regex `\{FLG:[^}]+\}`. Log the flag immediately and call `process.exit(0)`.
-4. **Tool schemas use zod**: Define zod schemas for tool inputs, convert to JSON schema for `ChatCompletionTool` type definitions.
-5. **Structured logging**: Three categories — `agent` (decisions, tool selection), `tool` (input/output of each tool call), `api` (HTTP requests/responses to OpenAI and Centrala).
-6. **Log file cached in memory**: Download once, store as string array. All `search_logs` calls operate on the cached data.
-7. **No semicolons**: Per coding standards.
-8. **Feedback-driven refinement**: When technicians say a subsystem is missing, the agent should search logs for that subsystem ID and add relevant events to the compressed output.
+1. **Dual-model architecture**: Orchestrator (big model) never sees raw logs — only metadata. Compressor (small model) handles compression internally.
+2. **Search buffer pattern**: `search_logs` adds matching lines to a buffer. `compress_logs` processes the buffer. `clear_search_buffer` resets it.
+3. **Cached compression**: Compressed output is cached in a module-level variable and auto-attached to `submit_answer`.
+4. **Conservative token heuristic**: Use 3.5 chars/token to avoid exceeding the 1500 token hard limit.
+5. **Flag capture is programmatic**: Parse response text with regex `\{FLG:[^}]+\}`. Log and exit immediately.
+6. **Tool schemas use zod**: Input validation for tool parameters.
+7. **Structured logging**: Three categories — `agent`, `tool`, `api`.
+8. **Feedback-driven refinement**: Orchestrator reads feedback, searches for missing subsystems, compresses with `mergeWithPrevious=true`.
+9. **Token savings**: Big model context stays small since it never processes raw log text, only short JSON metadata.
 
 ---
 
 ## 7. Acceptance Criteria
 
-- [ ] Agent fetches the full log file from the remote URL
-- [ ] Regex pre-filter extracts WARN/ERRO/CRIT events
-- [ ] LLM compresses filtered events to ≤1500 tokens
-- [ ] Token count is verified before each submission
-- [ ] Agent submits compressed logs to Centrala verify endpoint
-- [ ] Agent reads feedback and refines logs (up to 5 retries)
-- [ ] Flag is captured programmatically via regex and logged
-- [ ] Process exits with code 0 after flag capture
-- [ ] Structured logging with agent/tool/api categories
-- [ ] All code in TypeScript, no semicolons, SOLID principles
-- [ ] Environment variables managed via dotenv
+- [x] Agent fetches the full log file from the remote URL
+- [x] Regex pre-filter extracts WARN/ERRO/CRIT events into search buffer
+- [x] Small model compresses filtered events to ≤1500 tokens
+- [x] Token count is verified before each submission (by compressor)
+- [x] Agent submits cached compressed logs to Centrala verify endpoint
+- [x] Agent reads feedback and refines logs (up to 5 retries)
+- [x] Flag is captured programmatically via regex and logged
+- [x] Process exits with code 0 after flag capture
+- [x] Structured logging with agent/tool/api categories
+- [x] All code in TypeScript, no semicolons, SOLID principles
+- [x] Environment variables managed via dotenv
+- [x] Dual-model split: orchestrator never sees raw log content
+- [x] Compressed output cached and auto-attached to submissions
