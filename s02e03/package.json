@@ -4,7 +4,7 @@
 	"description": "failure",
 	"license": "MIT",
 	"author": "Dawid Dobrowolski",
-	"type": "module",
+	"type": "commonjs",
 	"main": "dist/index.js",
 	"scripts": {
 		"build": "npm run compile:check && npm run lint:check && npm run format:check && tsc",
