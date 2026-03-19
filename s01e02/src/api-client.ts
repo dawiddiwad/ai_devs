@@ -1,7 +1,7 @@
 import axios from "axios"
 import { Coordinates, PowerPlantsResponse, VerifyAnswer } from "./types"
 
-const BASE_URL = "https://***hub_endpoint***"
+const BASE_URL = process.env.AI_DEVS_HUB_ENDPOINT!
 const API_KEY = process.env.AI_DEVS_API_KEY!
 
 export async function fetchPowerPlantsRaw(): Promise<PowerPlantsResponse> {

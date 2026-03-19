@@ -1,6 +1,6 @@
-export const DOCUMENTATION_INDEX_URL = "https://***hub_endpoint***/dane/doc/index.md"
-export const DOCUMENTATION_BASE_URL = "https://***hub_endpoint***/dane/doc/"
-export const VERIFY_URL = "https://***hub_endpoint***/verify"
+export const DOCUMENTATION_INDEX_URL = `${process.env.AI_DEVS_HUB_ENDPOINT}/dane/doc/index.md`
+export const DOCUMENTATION_BASE_URL = `${process.env.AI_DEVS_HUB_ENDPOINT}/dane/doc/`
+export const VERIFY_URL = `${process.env.AI_DEVS_HUB_ENDPOINT}/verify`
 export const TASK_NAME = "sendit"
 
 export const SHIPMENT_DATA = `

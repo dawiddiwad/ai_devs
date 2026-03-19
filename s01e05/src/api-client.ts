@@ -1,7 +1,7 @@
 import axios, { AxiosError } from "axios"
 import { ApiRequestBody, ApiResponse, ToolCallInput } from "./types"
 
-const API_ENDPOINT = "https://***hub_endpoint***/verify"
+const API_ENDPOINT = `${process.env.AI_DEVS_HUB_ENDPOINT}/verify`
 const TASK_NAME = "railway"
 const MAX_RETRIES = 5
 const INITIAL_BACKOFF_MS = 1000

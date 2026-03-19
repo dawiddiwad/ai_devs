@@ -25,8 +25,8 @@ const main = async () => {
   const hubClient = new HubClient({
     apiKey: hubApiKey,
     taskName,
-    verifyUrl: 'https://***hub_endpoint***/verify',
-    dataUrl: `https://***hub_endpoint***/data/${hubApiKey}/categorize.csv`
+    verifyUrl: `${process.env.AI_DEVS_HUB_ENDPOINT}/verify`,
+    dataUrl: `${process.env.AI_DEVS_HUB_ENDPOINT}/data/${hubApiKey}/categorize.csv`
   })
 
   const openai = new OpenAI({
