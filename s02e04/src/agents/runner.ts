@@ -29,6 +29,7 @@ export async function runAgent(agentConfig: AgentConfig, userMessage: string): P
 			messages,
 			tools: agentConfig.tools,
 			tool_choice: 'auto',
+			parallel_tool_calls: true,
 		})
 
 		const choice = completion.choices[0]
