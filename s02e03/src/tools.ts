@@ -114,7 +114,7 @@ export const toolDefinitions: ChatCompletionTool[] = [
 
 async function fetchLogs(): Promise<string> {
 	const apiKey = process.env.AI_DEVS_API_KEY
-	const url = `https://***hub_endpoint***/data/${apiKey}/failure.log`
+	const url = `${process.env.AI_DEVS_HUB_ENDPOINT}/data/${apiKey}/failure.log`
 
 	logger.api('info', 'Fetching log file', { url: url.replace(apiKey!, '***') })
 
@@ -243,7 +243,7 @@ async function submitAnswer(): Promise<string> {
 	}
 
 	const apiKey = process.env.AI_DEVS_API_KEY
-	const url = 'https://***hub_endpoint***/verify'
+	const url = `${process.env.AI_DEVS_HUB_ENDPOINT}/verify`
 
 	const payload = {
 		apikey: apiKey,

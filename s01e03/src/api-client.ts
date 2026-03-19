@@ -1,7 +1,7 @@
 import axios from "axios"
 import type { PackageApiResponse } from "./types"
 
-const PACKAGES_URL = "https://***hub_endpoint***/api/packages"
+const PACKAGES_URL = `${process.env.AI_DEVS_HUB_ENDPOINT}/api/packages`
 
 function getApiKey(): string {
   const key = process.env.AI_DEVS_API_KEY

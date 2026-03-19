@@ -16,14 +16,14 @@ The three target values are:
 
 ### Hardcoded Inputs / Initial Data
 
-| Field           | Value                                    |
-| --------------- | ---------------------------------------- |
-| Hub base URL    | `https://***hub_endpoint***`                 |
-| Zmail endpoint  | `POST https://***hub_endpoint***/api/zmail`  |
-| Verify endpoint | `POST https://***hub_endpoint***/verify` |
-| Task name       | `mailbox`                                |
-| Known sender    | Wiktor, sends from `proton.me` domain    |
-| API key         | from `AI_DEVS_API_KEY` env variable      |
+| Field           | Value                                       |
+| --------------- | ------------------------------------------- |
+| Hub base URL    | `https://***hub_endpoint***`                |
+| Zmail endpoint  | `POST https://***hub_endpoint***/api/zmail` |
+| Verify endpoint | `POST https://***hub_endpoint***/verify`    |
+| Task name       | `mailbox`                                   |
+| Known sender    | Wiktor, sends from `proton.me` domain       |
+| API key         | from `AI_DEVS_API_KEY` env variable         |
 
 ### Final Deliverable
 

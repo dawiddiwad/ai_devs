@@ -15,7 +15,7 @@ export const config = {
 	openaiApiKey: requireEnv('OPENAI_API_KEY'),
 	openaiModel: process.env['OPENAI_MODEL'] || 'gpt-4o-mini',
 	aiDevsApiKey: requireEnv('AI_DEVS_API_KEY'),
-	zmailEndpoint: 'https://***hub_endpoint***/api/zmail',
-	verifyEndpoint: 'https://***hub_endpoint***/verify',
+	zmailEndpoint: `${requireEnv('AI_DEVS_HUB_ENDPOINT')}/api/zmail`,
+	verifyEndpoint: `${requireEnv('AI_DEVS_HUB_ENDPOINT')}/verify`,
 	taskName: 'mailbox',
 }
