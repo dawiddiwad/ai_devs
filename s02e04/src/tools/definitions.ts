@@ -1,40 +1,22 @@
 import { z } from 'zod'
 import type { ChatCompletionTool } from 'openai/resources/chat/completions'
 
-export const getInboxSchema = z.object({
-	page: z.number().optional().describe('Page number, >= 1. Default: 1'),
-	perPage: z.number().optional().describe('Items per page, 5-20. Default: 5'),
-})
-
-export const getThreadSchema = z.object({
-	threadID: z.number().describe('Numeric thread identifier'),
-})
-
-export const getMessagesSchema = z.object({
-	ids: z
-		.union([z.number(), z.string(), z.array(z.union([z.number(), z.string()]))])
-		.describe('Numeric rowID, 32-char messageID, or an array of them'),
-})
-
-export const searchSchema = z.object({
-	query: z
-		.string()
-		.describe(
-			'Search query. Supports words, "phrase", -exclude, from:, to:, subject:, subject:"phrase", subject:(phrase), OR, AND. Missing operator means AND.'
-		),
-	page: z.number().optional().describe('Page number, >= 1. Default: 1'),
-	perPage: z.number().optional().describe('Items per page, 5-20. Default: 5'),
-})
+export const emailRequestSchema = z
+	.object({
+		action: z
+			.string()
+			.describe(
+				'The zmail API action to call according to the api documentation, call it with action "help" first to discover available actions.'
+			),
+	})
+	.loose()
 
 export const waitSchema = z.object({
 	seconds: z.number().optional().describe('Number of seconds to wait (default: 30)'),
 })
 
 export const delegateSchema = z.object({
-	agentType: z
-		.enum(['dateFinder', 'passwordFinder', 'confirmationCodeFinder'])
-		.describe('Which specialized agent to invoke'),
-	context: z.string().optional().describe('Additional context or instructions for the sub-agent'),
+	instruction: z.string().describe('Precise instruction for the finder agent describing what to search for and how'),
 })
 
 export const submitAnswerSchema = z.object({
@@ -51,70 +33,20 @@ export const finderTools: ChatCompletionTool[] = [
 	{
 		type: 'function',
 		function: {
-			name: 'getInbox',
-			description: 'Return list of threads in the mailbox. No message body.',
-			parameters: {
-				type: 'object',
-				properties: {
-					page: { type: 'number', description: 'Page number, >= 1. Default: 1' },
-					perPage: { type: 'number', description: 'Items per page, 5-20. Default: 5' },
-				},
-			},
-		},
-	},
-	{
-		type: 'function',
-		function: {
-			name: 'getThread',
-			description: 'Return rowID and messageID list for a selected thread. No message body.',
-			parameters: {
-				type: 'object',
-				properties: {
-					threadID: { type: 'number', description: 'Required. Numeric thread identifier.' },
-				},
-				required: ['threadID'],
-			},
-		},
-	},
-	{
-		type: 'function',
-		function: {
-			name: 'getMessages',
-			description: 'Return one or more full messages by rowID or 32-char messageID.',
-			parameters: {
-				type: 'object',
-				properties: {
-					ids: {
-						description: 'Numeric rowID, 32-char messageID, or an array of them.',
-						oneOf: [
-							{ type: 'number' },
-							{ type: 'string' },
-							{ type: 'array', items: { oneOf: [{ type: 'number' }, { type: 'string' }] } },
-						],
-					},
-				},
-				required: ['ids'],
-			},
-		},
-	},
-	{
-		type: 'function',
-		function: {
-			name: 'search',
+			name: 'email_request',
 			description:
-				'Search messages with full-text style query and Gmail-like operators. Returns metadata, not body.',
+				'Send a request to the zmail API. Pass any action and its parameters. Call help first to discover available actions.',
 			parameters: {
 				type: 'object',
 				properties: {
-					query: {
+					action: {
 						type: 'string',
 						description:
-							'Supports words, "phrase", -exclude, from:, to:, subject:, subject:"phrase", subject:(phrase), OR, AND. Missing operator means AND.',
+							'The zmail API action (e.g. help, getInbox, getThread, getMessages, search). Discover actions by calling with action "help" first.',
 					},
-					page: { type: 'number', description: 'Page number, >= 1. Default: 1' },
-					perPage: { type: 'number', description: 'Items per page, 5-20. Default: 5' },
 				},
-				required: ['query'],
+				required: ['action'],
+				additionalProperties: true,
 			},
 		},
 	},
@@ -132,18 +64,6 @@ export const finderTools: ChatCompletionTool[] = [
 			},
 		},
 	},
-	{
-		type: 'function',
-		function: {
-			name: 'help',
-			description:
-				'Discover available mailbox API actions and their parameters. Call this FIRST to learn what actions are available.',
-			parameters: {
-				type: 'object',
-				properties: {},
-			},
-		},
-	},
 ]
 
 export const coordinatorTools: ChatCompletionTool[] = [
@@ -152,22 +72,17 @@ export const coordinatorTools: ChatCompletionTool[] = [
 		function: {
 			name: 'delegate',
 			description:
-				'Delegate a search task to a specialized sub-agent. Opens a new conversation with the sub-agent and returns the result.',
+				'Spawn a generic finder agent with a specific instruction. The finder has access to the mailbox API (email_request + wait) and will follow your instruction autonomously.',
 			parameters: {
 				type: 'object',
 				properties: {
-					agentType: {
-						type: 'string',
-						enum: ['dateFinder', 'passwordFinder', 'confirmationCodeFinder'],
-						description: 'Which specialized agent to invoke',
-					},
-					context: {
+					instruction: {
 						type: 'string',
 						description:
-							'Additional context or instructions for the sub-agent (e.g., hub feedback from a previous attempt)',
+							'Precise instruction for the finder agent: what to search for, what keywords/strategies to use, expected format of the result.',
 					},
 				},
-				required: ['agentType'],
+				required: ['instruction'],
 			},
 		},
 	},

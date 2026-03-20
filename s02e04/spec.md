@@ -33,14 +33,14 @@ A POST request to `/api/verify` with the three extracted values. The hub returns
 
 ## 2. Agent Persona & Prompt Strategy
 
-### Architecture: Orchestrator + 3 Autonomous Finders
+### Architecture: Orchestrator + Generic Finder
 
-The system uses an **orchestrator pattern** with one coordinator agent and three specialized sub-agents. Each sub-agent is **fully autonomous** — it discovers the mailbox API via the `help` tool, searches for its target value, and handles retries with 30-second waits (up to 10 times) before returning. The coordinator only delegates and collects results.
+The system uses an **orchestrator pattern** with one coordinator agent and a single reusable finder agent. The coordinator spawns finder instances with precise instructions describing what to search for. Each finder is **fully autonomous** — it discovers the mailbox API via `email_request` with action `help`, searches for its target value, and handles retries with 30-second waits (up to 10 times) before returning.
 
 ```
 ┌──────────────────────────────────────────────────────┐
 │                  Coordinator Agent                    │
-│  - Delegates to finders (sequentially)               │
+│  - Spawns finders with precise instructions          │
 │  - Collects results into answer object               │
 │  - Submits to hub, handles retries                   │
 │  - Captures flag and terminates                      │
@@ -48,122 +48,65 @@ The system uses an **orchestrator pattern** with one coordinator agent and three
      │              │              │
      ▼              ▼              ▼
 ┌─────────┐  ┌───────────┐  ┌──────────────────┐
-│  Date   │  │ Password  │  │ Confirmation Code│
-│ Finder  │  │  Finder   │  │     Finder       │
+│  Finder │  │  Finder   │  │     Finder       │
+│ (date)  │  │ (password)│  │  (conf. code)    │
 └─────────┘  └───────────┘  └──────────────────┘
+     (same generic agent, different instructions)
 ```
 
-Each sub-agent has access to `getInbox`, `getThread`, `getMessages`, `search`, `wait`, and `help` tools. The coordinator has `delegate`, `submitAnswer`, and `finish` tools.
+Each finder has access to `email_request` (generic zmail API passthrough) and `wait` tools. The coordinator has `delegate`, `submitAnswer`, and `finish` tools.
 
 ### System Prompt — Coordinator Agent
 
 ```markdown
-You are a coordinator agent managing a mailbox investigation. Your goal is to find three pieces of information by delegating search tasks to specialized sub-agents and then submitting the answer to the hub.
+You are a coordinator agent managing a mailbox investigation. Your goal is to find three pieces of information by spawning finder agents and then submitting the answer to the hub.
 
 ## Target values
-
 1. **date** — when the security department plans an attack on our power plant (format: YYYY-MM-DD)
 2. **password** — password to the employee system
 3. **confirmation_code** — code from a security department ticket (format: SEC- followed by 32 characters, 36 total)
 
 ## Known context
-
 - A person named Wiktor sent a tip-off email from a proton.me domain
 - The mailbox is live — new emails may arrive at any time
 
 ## Your workflow
-
-1. Use the delegate tool to send each finder agent to search for its assigned value. Each sub-agent is fully autonomous — it knows the mailbox API and will retry with 30-second waits up to 10 times if needed.
-2. Collect the results. If a finder reports it could not find its value, you may re-delegate with additional context.
+1. Use the delegate tool to spawn a finder for each value. Write a brief but precise instruction telling the finder exactly what to search for, which keywords and strategies to use, and what format the result should be in. Each finder is autonomous — it discovers the mailbox API itself and handles retries.
+2. Collect the results. If a finder reports it could not find its value, spawn another finder with adjusted instructions.
 3. Once all three values are collected, use submitAnswer to send them to the hub.
-4. If the hub reports errors (wrong values), re-delegate the relevant finder(s) with the feedback.
+4. If the hub reports errors (wrong values), spawn new finders with the feedback.
 5. When the hub returns a flag (look for "success": true and "flag" in the response), use finish to complete the task.
 
-## Rules
+## Instruction guidelines for finders
+- Tell them what value to find and its exact format
+- Suggest search keywords, sender names, or subject patterns
+- Mention that search/getInbox return metadata only — they must use getMessages to read bodies
+- Keep instructions concise (3-6 sentences)
 
-- Delegate to finders one at a time (sequential) to avoid API rate limits
-- Never guess or fabricate values — only use information extracted from actual emails
-- Always pass hub feedback to finders when re-delegating
+## Rules
+- If finder encounter rate limits, next time spawn finders one at a time (sequential) to avoid API rate limits
+- Never guess or fabricate values — only use information provided by the finders
+- Always pass hub feedback to appropriate finders when re-delegating
 ```
 
-### System Prompt — Date Finder Agent
+### System Prompt — Generic Finder Agent
 
 ```markdown
-You are a specialized email search agent. Your task is to find the **date** when the security department plans an attack on a power plant.
+You are an autonomous email search agent. You have access to a mailbox via the tool.
 
-## First step
-
-Call the help tool to discover available mailbox API actions and their parameters.
-
-## Search strategy
-
-1. After calling help, use the discovered actions to browse and search the mailbox
-2. Search for emails related to the security department, attacks, or power plant
-3. Try queries like: subject with security-related keywords, from known security contacts
-4. Remember that Wiktor (from proton.me) sent a tip-off — his email may reference the attack
-5. Read the full content of promising emails (search/inbox only return metadata — use the appropriate action to fetch the body)
-6. Extract the date in YYYY-MM-DD format
+## Your workflow
+1. Learn about email API.
+2. Follow the instruction given to you in the user message — it tells you exactly what to search for
+3. Use search/getInbox to find relevant emails (these return metadata only, no body)
+4. Use getMessages with IDs from results to read full message bodies
+5. Extract the requested value from the email content
 
 ## Rules
-
-- Always call help FIRST to learn what API actions and parameters are available
-- If you cannot find the information, call wait (30 seconds) FIRST, then retry with a different search strategy
+- If you cannot find the information, wait for 30s as new emails may arrive.
+- If you encounter rate limiting errors, wait for 30, 60 or 120 seconds, then retry with a different strategy
 - Retry up to 10 times before giving up
-- Return ONLY the extracted date in YYYY-MM-DD format, or report that you could not find it
-- Never guess — only return a date explicitly stated in an email
-```
-
-### System Prompt — Password Finder Agent
-
-```markdown
-You are a specialized email search agent. Your task is to find the **password to the employee system** that is stored somewhere in the mailbox.
-
-## First step
-
-Call the help tool to discover available mailbox API actions and their parameters.
-
-## Search strategy
-
-1. After calling help, use the discovered actions to browse and search the mailbox
-2. Search for emails containing password-related keywords — password, hasło, credentials, login, access
-3. Check emails about system access, onboarding, or account setup
-4. Read the full content of promising emails (search/inbox only return metadata — use the appropriate action to fetch the body)
-5. Extract the exact password string
-
-## Rules
-
-- Always call help FIRST to learn what API actions and parameters are available
-- If you cannot find the information, call wait (30 seconds) FIRST, then retry with a different search strategy
-- Retry up to 10 times before giving up
-- Return ONLY the extracted password string, or report that you could not find it
-- Never guess — only return a password explicitly stated in an email
-```
-
-### System Prompt — Confirmation Code Finder Agent
-
-```markdown
-You are a specialized email search agent. Your task is to find a **confirmation code** from a ticket sent by the security department.
-
-## First step
-
-Call the help tool to discover available mailbox API actions and their parameters.
-
-## Search strategy
-
-1. After calling help, use the discovered actions to browse and search the mailbox
-2. Search for emails containing ticket or confirmation-related keywords — SEC-, confirmation, ticket, kod, potwierdzenie
-3. Look for emails from the security department
-4. Read the full content of promising emails (search/inbox only return metadata — use the appropriate action to fetch the body)
-5. The code format is: SEC- followed by 32 characters (36 characters total)
-
-## Rules
-
-- Always call help FIRST to learn what API actions and parameters are available
-- If you cannot find the information, call wait (30 seconds) FIRST, then retry with a different search strategy
-- Retry up to 10 times before giving up
-- Return ONLY the extracted confirmation code (SEC-XXXXXXXX...), or report that you could not find it
-- Never guess — only return a code explicitly stated in an email
-- Validate format: must start with SEC- and be 36 characters total
+- Return ONLY the extracted value, or report that you could not find it
+- Never guess — only return values explicitly stated in emails
 ```
 
 ---
@@ -172,32 +115,11 @@ Call the help tool to discover available mailbox API actions and their parameter
 
 ### Finder Agent Tools
 
-These tools are available to all three specialized finder sub-agents. They map directly to the zmail API actions, which the agents discover at runtime via the `help` tool.
+These tools are available to all finder agent instances. The `email_request` tool is a generic passthrough to the zmail API — the agent discovers available actions at runtime via `help`.
 
-#### 3.1 `help`
+#### 3.1 `email_request`
 
-**Description:** Discover available mailbox API actions and their parameters. Agents call this FIRST to learn what the API supports.
-
-**Input Schema:**
-
-```json
-{
-	"type": "object",
-	"properties": {}
-}
-```
-
-**Behavior:**
-
-- Calls `POST https://***hub_endpoint***/api/zmail` with `{ apikey, action: "help" }`
-- Returns the full API documentation including all available actions, their parameters, and descriptions
-- Logs request/response via `logger.api`
-
-**Return value:** Raw JSON response from the API describing all available actions.
-
-#### 3.2 `getInbox`
-
-**Description:** Return list of threads in the mailbox. No message body.
+**Description:** Send a request to the zmail API. Pass any action and its parameters. Call with action "help" first to discover available actions.
 
 **Input Schema:**
 
@@ -205,106 +127,25 @@ These tools are available to all three specialized finder sub-agents. They map d
 {
 	"type": "object",
 	"properties": {
-		"page": {
-			"type": "number",
-			"description": "Page number, >= 1. Default: 1"
-		},
-		"perPage": {
-			"type": "number",
-			"description": "Items per page, 5-20. Default: 5"
-		}
-	}
-}
-```
-
-**Behavior:**
-
-- Calls `POST https://***hub_endpoint***/api/zmail` with `{ apikey, action: "getInbox", page, perPage }`
-- Logs request/response via `logger.api`
-
-#### 3.3 `getThread`
-
-**Description:** Return rowID and messageID list for a selected thread. No message body.
-
-**Input Schema:**
-
-```json
-{
-	"type": "object",
-	"properties": {
-		"threadID": {
-			"type": "number",
-			"description": "Required. Numeric thread identifier."
-		}
-	},
-	"required": ["threadID"]
-}
-```
-
-**Behavior:**
-
-- Calls `POST https://***hub_endpoint***/api/zmail` with `{ apikey, action: "getThread", threadID }`
-- Logs request/response via `logger.api`
-
-#### 3.4 `getMessages`
-
-**Description:** Return one or more full messages (including body) by rowID or 32-char messageID.
-
-**Input Schema:**
-
-```json
-{
-	"type": "object",
-	"properties": {
-		"ids": {
-			"description": "Numeric rowID, 32-char messageID, or an array of them.",
-			"oneOf": [{ "type": "number" }, { "type": "string" }, { "type": "array" }]
-		}
-	},
-	"required": ["ids"]
-}
-```
-
-**Behavior:**
-
-- Calls `POST https://***hub_endpoint***/api/zmail` with `{ apikey, action: "getMessages", ids }`
-- This is the only way to read full message bodies
-- Logs request/response via `logger.api`
-
-#### 3.5 `search`
-
-**Description:** Search messages with full-text style query and Gmail-like operators. Returns metadata only, not body.
-
-**Input Schema:**
-
-```json
-{
-	"type": "object",
-	"properties": {
-		"query": {
+		"action": {
 			"type": "string",
-			"description": "Supports words, \"phrase\", -exclude, from:, to:, subject:, subject:\"phrase\", subject:(phrase), OR, AND. Missing operator means AND."
-		},
-		"page": {
-			"type": "number",
-			"description": "Page number, >= 1. Default: 1"
-		},
-		"perPage": {
-			"type": "number",
-			"description": "Items per page, 5-20. Default: 5"
+			"description": "The zmail API action (e.g. help, getInbox, getThread, getMessages, search)"
 		}
 	},
-	"required": ["query"]
+	"required": ["action"],
+	"additionalProperties": true
 }
 ```
 
 **Behavior:**
 
-- Calls `POST https://***hub_endpoint***/api/zmail` with `{ apikey, action: "search", query, page, perPage }`
-- Returns metadata only — agents must use `getMessages` to read message bodies
+- Calls `POST https://***hub_endpoint***/api/zmail` with `{ apikey, action, ...params }`
+- Returns the raw JSON response from the API
 - Logs request/response via `logger.api`
 
-#### 3.6 `wait`
+**Return value:** Raw JSON response from the API.
+
+#### 3.2 `wait`
 
 **Description:** Wait for a specified number of seconds. Used before retrying when emails are not found yet.
 
@@ -332,7 +173,7 @@ These tools are available to all three specialized finder sub-agents. They map d
 
 #### 3.7 `delegate`
 
-**Description:** Delegate a search task to a specialized sub-agent. Opens a new conversation with the sub-agent's system prompt and tools, runs it to completion, and returns the result.
+**Description:** Spawn a generic finder agent with a specific instruction. The finder has access to the mailbox API (`email_request` + `wait`) and will follow the instruction autonomously.
 
 **Input Schema:**
 
@@ -340,33 +181,28 @@ These tools are available to all three specialized finder sub-agents. They map d
 {
 	"type": "object",
 	"properties": {
-		"agentType": {
+		"instruction": {
 			"type": "string",
-			"enum": ["dateFinder", "passwordFinder", "confirmationCodeFinder"],
-			"description": "Which specialized agent to invoke"
-		},
-		"context": {
-			"type": "string",
-			"description": "Additional context or instructions for the sub-agent (e.g., hub feedback from a previous attempt)"
+			"description": "Precise instruction for the finder agent: what to search for, what keywords/strategies to use, expected format of the result."
 		}
 	},
-	"required": ["agentType"]
+	"required": ["instruction"]
 }
 ```
 
 **Behavior:**
 
-- Instantiates the selected sub-agent with its system prompt and tools (`getInbox`, `getThread`, `getMessages`, `search`, `wait`, `help`)
-- Passes the `context` string as the user message
-- Runs the sub-agent's tool-calling loop to completion (max 40 iterations)
-- Returns the sub-agent's final text response
+- Instantiates a generic finder agent with its system prompt and tools (`email_request`, `wait`)
+- Passes the `instruction` string as the user message
+- Runs the finder's tool-calling loop to completion (max 40 iterations)
+- Returns the finder's final text response
 - Logs delegation and result via `logger.agent`
 
 **Return value:**
 
 ```json
 {
-	"result": "string — the sub-agent's extracted value or a 'not found' report"
+	"result": "string — the finder's extracted value or a 'not found' report"
 }
 ```
 
@@ -450,21 +286,21 @@ START
   │
   ├─ 1. Coordinator receives task description
   │
-  ├─ 2. Delegate to Date Finder
-  │     └─ Finder calls `help` → discovers API → searches mailbox → returns date
+  ├─ 2. Spawn finder with instruction: "Find the attack date..."
+  │     └─ Finder calls email_request(help) → discovers API → searches → returns date
   │        └─ If not found: waits 30s, retries (up to 10 times autonomously)
   │
-  ├─ 3. Delegate to Password Finder
-  │     └─ Finder calls `help` → discovers API → searches mailbox → returns password
+  ├─ 3. Spawn finder with instruction: "Find the employee password..."
+  │     └─ Finder calls email_request(help) → discovers API → searches → returns password
   │        └─ If not found: waits 30s, retries (up to 10 times autonomously)
   │
-  ├─ 4. Delegate to Confirmation Code Finder
-  │     └─ Finder calls `help` → discovers API → searches mailbox → returns code
+  ├─ 4. Spawn finder with instruction: "Find the SEC- confirmation code..."
+  │     └─ Finder calls email_request(help) → discovers API → searches → returns code
   │        └─ If not found: waits 30s, retries (up to 10 times autonomously)
   │
   ├─ 5. Once all 3 values collected → submitAnswer to hub
   │     ├─ If flag returned → finish(flag)
-  │     └─ If error feedback → re-delegate relevant finder(s) with feedback
+  │     └─ If error feedback → spawn new finder(s) with feedback
   │
   └─ END (process.exit(0) after flag capture)
 ```
@@ -507,15 +343,13 @@ src/
   index.ts              # Entry point — loads env, starts coordinator
   agents/
     runner.ts           # Reusable agent loop: system prompt + tools → iterate until done
-    coordinator.ts      # Coordinator agent config (system prompt, tools, task message)
-    dateFinder.ts       # Date finder agent config
-    passwordFinder.ts   # Password finder agent config
-    codeFinder.ts       # Confirmation code finder agent config
+    coordinator.ts      # Coordinator agent system prompt
+    finder.ts           # Generic finder agent system prompt
   tools/
     definitions.ts      # ChatCompletionTool definitions with zod schemas
-    mailbox.ts          # getInbox, getThread, getMessages, search, wait, helpMail (zmail API)
+    mailbox.ts          # emailRequest (generic zmail passthrough), wait, helpMail
     hub.ts              # submitAnswer implementation (verify API)
-    delegate.ts         # delegate tool — runs a sub-agent via runner
+    delegate.ts         # delegate tool — spawns a finder via runner
     finish.ts           # finish tool — logs flag, exits process
   config.ts             # Constants (URLs, task name) and env access
   logger.ts             # Existing structured logger (agent/tool/api categories)
@@ -531,30 +365,32 @@ src/
 
 3. **Tool definitions** (`tools/definitions.ts`): Use `ChatCompletionTool` type from the `openai` package. Define zod schemas for each tool's parameters and use `.parse()` for validation. Export both the OpenAI tool definitions arrays (`finderTools`, `coordinatorTools`) and tool executor maps.
 
-4. **API discovery per sub-agent**: Each sub-agent calls `help` as its FIRST action. The help response reveals exact action names, parameters, query syntax, and pagination details. This replaced an earlier approach of hardcoding API reference in prompts — dynamic discovery is more robust.
+4. **Generic email_request tool**: Instead of hardcoding each zmail action as a separate tool, a single `email_request` tool passes the `action` and any additional parameters directly to the zmail API. The agent discovers available actions at runtime by calling `email_request({ action: "help" })`. The schema uses `.passthrough()` to allow arbitrary additional parameters.
 
-5. **Two-step email reading**: The `search` and `getInbox` actions return metadata only (no body). Agents must call `getMessages` with IDs from search/thread results to read full message content. Sub-agent prompts emphasize this workflow.
+5. **Unified finder agent**: A single generic finder system prompt (`agents/finder.ts`) instructs the agent to follow the user message (injected by the coordinator via delegate). The coordinator writes brief, precise instructions for each finder instance describing what to search for and how.
 
-6. **Flag capture must be programmatic**: In `submitAnswer`, scan the hub response for the flag using regex `/\{FLG:[^}]+\}/`. Do NOT rely on the LLM to extract or relay the flag. Log it immediately via `logger.agent` and call `finish` to terminate with `process.exit(0)`.
+6. **Two-step email reading**: The `search` and `getInbox` actions return metadata only (no body). Agents must call `getMessages` with IDs from search/thread results to read full message content. The coordinator's instructions to finders should mention this.
 
-7. **Sub-agent isolation**: Each sub-agent gets a fresh conversation (no shared message history). The coordinator passes context via the `delegate` tool's `context` parameter. This keeps sub-agent token usage low and focused.
+7. **Flag capture must be programmatic**: In `submitAnswer`, scan the hub response for the flag using regex `/\{FLG:[^}]+\}/`. Do NOT rely on the LLM to extract or relay the flag. Log it immediately via `logger.agent` and call `finish` to terminate with `process.exit(0)`.
 
-8. **Autonomous retries in sub-agents**: Each finder agent handles its own retry logic — up to 10 attempts with 30-second waits between them. This is more efficient than coordinator-driven retries because the sub-agent maintains its search state across attempts.
+8. **Finder isolation**: Each finder gets a fresh conversation (no shared message history). The coordinator passes context via the `delegate` tool's `instruction` parameter. This keeps finder token usage low and focused.
 
-9. **Error handling with retries**: All zmail API calls use a shared `zmailRequest` function with 3 retries and exponential backoff for transient failures (network errors, 5xx). On 4xx errors, the error is surfaced to the agent for decision-making.
+9. **Autonomous retries in finders**: Each finder handles its own retry logic — up to 10 attempts with 30-second waits between them. This is more efficient than coordinator-driven retries because the finder maintains its search state across attempts.
 
-10. **Logging discipline**: Every API call logs via `logger.api` (request params + response). Every tool execution logs via `logger.tool` (input + output). Every agent decision logs via `logger.agent` (which tool chosen, why, delegation results).
+10. **Error handling with retries**: All zmail API calls use a shared `zmailRequest` function with 3 retries and exponential backoff for transient failures (network errors, 5xx). On 4xx errors, the error is surfaced to the agent for decision-making.
 
-11. **No semicolons**: Per AGENTS.md coding standards, do not use semicolons at the end of lines.
+11. **Logging discipline**: Every API call logs via `logger.api` (request params + response). Every tool execution logs via `logger.tool` (input + output). Every agent decision logs via `logger.agent` (which tool chosen, why, delegation results).
+
+12. **No semicolons**: Per AGENTS.md coding standards, do not use semicolons at the end of lines.
 
 ---
 
 ## 7. Acceptance Criteria
 
-- [ ] Each sub-agent calls `help` on zmail API as its first action to discover available actions
-- [ ] Coordinator successfully delegates to all 3 specialized finder agents
-- [ ] Each finder uses `search`/`getInbox` + `getMessages` to find its target value
-- [ ] Sub-agents autonomously retry up to 10 times with 30s waits when values are not found
+- [ ] Each finder calls email_request with action "help" as its first action to discover available API actions
+- [ ] Coordinator successfully spawns finder agents with precise instructions for all 3 values
+- [ ] Each finder uses email_request to search and read emails to find its target value
+- [ ] Finders autonomously retry up to 10 times with 30s waits when values are not found
 - [ ] Coordinator collects all 3 values and submits via `submitAnswer`
 - [ ] Hub returns flag `{FLG:...}` and it is captured via regex (not LLM)
 - [ ] Flag is logged via `logger.agent('info', ...)` immediately upon capture

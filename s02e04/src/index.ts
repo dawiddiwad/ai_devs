@@ -22,7 +22,7 @@ async function main() {
 		toolExecutors: coordinatorToolExecutors,
 	}
 
-	const taskMessage = `Begin the mailbox investigation. Find all three values (date, password, confirmation_code) by delegating to the specialized finder agents, then submit the answer to capture the flag. Each finder agent has full knowledge of the mailbox API and will handle retries autonomously.`
+	const taskMessage = `Begin the mailbox investigation. Find all three values (date, password, confirmation_code) by spawning finder agents with precise instructions, then submit the answer to capture the flag. Each finder discovers the mailbox API autonomously and handles retries.`
 
 	await runAgent(agentConfig, taskMessage)
 
