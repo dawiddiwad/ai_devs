@@ -48,10 +48,3 @@ export async function wait(args: unknown): Promise<string> {
 	await new Promise((resolve) => setTimeout(resolve, seconds * 1000))
 	return JSON.stringify({ waited: seconds })
 }
-
-export async function helpMail(): Promise<string> {
-	logger.tool('info', 'helpMail called')
-	const data = await zmailRequest({ action: 'help' })
-	logger.tool('info', 'helpMail result', { data })
-	return JSON.stringify(data)
-}
