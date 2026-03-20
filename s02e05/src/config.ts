@@ -10,18 +10,16 @@ function requireEnv(name: string): string {
 	return value
 }
 
-/**
- * Configuration module for the agent framework.
- * Loads environment variables using dotenv and provides a structured config object for use throughout the application.
- * The requireEnv function ensures that all necessary environment variables are present, throwing an error if any are missing.
- * This centralizes configuration management and allows for easy access to settings like API keys, model names, and endpoint URLs.
- * The config object can be extended in the future to include additional settings as needed.
- */
+const hubEndpoint = requireEnv('AI_DEVS_HUB_ENDPOINT')
+
 export const config = {
 	openaiBaseUrl: process.env['OPENAI_BASE_URL'] || undefined,
 	openaiApiKey: requireEnv('OPENAI_API_KEY'),
 	openaiModel: process.env['OPENAI_MODEL'] || 'gpt-5-mini',
+	openaiVisionModel: process.env['OPENAI_VISION_MODEL'] || 'gpt-5.4',
 	aiDevsApiKey: requireEnv('AI_DEVS_API_KEY'),
-	verifyEndpoint: `${requireEnv('AI_DEVS_HUB_ENDPOINT')}/verify`,
+	verifyEndpoint: `${hubEndpoint}/verify`,
 	taskName: requireEnv('AI_DEVS_TASK_NAME'),
+	droneDocsUrl: `${hubEndpoint}/dane/drone.html`,
+	droneMapUrl: `${hubEndpoint}/data/${requireEnv('AI_DEVS_API_KEY')}/drone.png`,
 }

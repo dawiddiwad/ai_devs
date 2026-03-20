@@ -8,13 +8,13 @@ The agent must program an armed drone (DRN-BMB7) to bomb a **dam** near the Żar
 
 ### Hardcoded Inputs / Initial Data
 
-| Field                    | Value                                                        |
-| ------------------------ | ------------------------------------------------------------ |
-| Power plant ID           | `PWR6132PL`                                                  |
-| Task name                | `drone`                                                      |
-| Drone API docs (HTML)    | `***hub_endpoint***/dane/drone.html`                         |
-| Map URL template         | `***hub_endpoint***/data/{API_KEY}/drone.png`                |
-| Verify endpoint          | `{AI_DEVS_HUB_ENDPOINT}/verify`                             |
+| Field                 | Value                                         |
+| --------------------- | --------------------------------------------- |
+| Power plant ID        | `PWR6132PL`                                   |
+| Task name             | `drone`                                       |
+| Drone API docs (HTML) | `***hub_endpoint***/dane/drone.html`          |
+| Map URL template      | `***hub_endpoint***/data/{API_KEY}/drone.png` |
+| Verify endpoint       | `{AI_DEVS_HUB_ENDPOINT}/verify`               |
 
 ### Final Deliverable
 
@@ -30,10 +30,12 @@ A POST request to `/verify` with a JSON payload containing drone instructions th
 You are a drone mission planner. Your objective is to send a drone to destroy a dam near the Żarnowiec power plant to enable water flow into the cooling system.
 
 ## Mission Parameters
+
 - The power plant identification code is: PWR6132PL
 - You must target the dam — NOT the power plant itself.
 
 ## Your Workflow
+
 1. First, call `fetchDroneDocumentation` to learn the drone API and available commands.
 2. Call `analyzeMap` to study the terrain map and identify the dam's location on the grid.
 3. Based on the documentation and map analysis, construct a drone instruction sequence.
@@ -42,6 +44,7 @@ You are a drone mission planner. Your objective is to send a drone to destroy a 
 6. Continue until the flag is captured or you exhaust retries.
 
 ## Rules
+
 - ONLY target the dam — never the power plant directly.
 - Keep the instruction set minimal — only include what's needed for the mission.
 - You MUST read the drone documentation before constructing any instructions.
@@ -67,9 +70,9 @@ You are a drone mission planner. Your objective is to send a drone to destroy a 
 
 ```json
 {
-  "type": "object",
-  "properties": {},
-  "required": []
+	"type": "object",
+	"properties": {},
+	"required": []
 }
 ```
 
@@ -86,7 +89,7 @@ No parameters — the documentation URL is constructed from config.
 
 ```json
 {
-  "documentation": "Parsed plain-text content of the drone API documentation page"
+	"documentation": "Parsed plain-text content of the drone API documentation page"
 }
 ```
 
@@ -98,9 +101,9 @@ No parameters — the documentation URL is constructed from config.
 
 ```json
 {
-  "type": "object",
-  "properties": {},
-  "required": []
+	"type": "object",
+	"properties": {},
+	"required": []
 }
 ```
 
@@ -117,7 +120,7 @@ No parameters — the map URL is constructed from config.
 
 ```json
 {
-  "description": "Detailed vision model description of the map contents"
+	"description": "Detailed vision model description of the map contents"
 }
 ```
 
@@ -129,15 +132,15 @@ No parameters — the map URL is constructed from config.
 
 ```json
 {
-  "type": "object",
-  "properties": {
-    "instructions": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "Array of drone instruction strings to send, e.g. [\"setDestinationObject(PWR6132PL)\", \"set(3,2)\", \"set(engineON)\", \"set(50m)\", \"set(destroy)\", \"flyToLocation\"]"
-    }
-  },
-  "required": ["instructions"]
+	"type": "object",
+	"properties": {
+		"instructions": {
+			"type": "array",
+			"items": { "type": "string" },
+			"description": "Array of drone instruction strings to send, e.g. [\"setDestinationObject(PWR6132PL)\", \"set(3,2)\", \"set(engineON)\", \"set(50m)\", \"set(destroy)\", \"flyToLocation\"]"
+		}
+	},
+	"required": ["instructions"]
 }
 ```
 
@@ -147,11 +150,11 @@ No parameters — the map URL is constructed from config.
 2. Constructs the POST payload:
    ```json
    {
-     "apikey": "{AI_DEVS_API_KEY}",
-     "task": "drone",
-     "answer": {
-       "instructions": ["..."]
-     }
+   	"apikey": "{AI_DEVS_API_KEY}",
+   	"task": "drone",
+   	"answer": {
+   		"instructions": ["..."]
+   	}
    }
    ```
 3. POSTs to the verify endpoint via axios
@@ -163,8 +166,8 @@ No parameters — the map URL is constructed from config.
 
 ```json
 {
-  "response": "Raw API response text or JSON stringified",
-  "flagFound": false
+	"response": "Raw API response text or JSON stringified",
+	"flagFound": false
 }
 ```
 
