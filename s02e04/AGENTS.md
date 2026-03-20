@@ -8,6 +8,8 @@
 - Write self-explanatory code and avoid inline comments
 - Do not use semicolons at the end of lines
 - Use package.json as a baseline; extend it if needed
+- Always use environment variables for critical configuration values as shown in the `.env.example` file.
+- Never use hardcoded values for API keys, base URLs, or any sensitive information directly in the codebase.
 
 ## Observability
 
@@ -28,6 +30,7 @@
 ## Documentation
 
 - Whenever you do a functional change to existing code, update any documentation within the project, in particular `spec.md` or `README.md` to reflect the change and ensure that it is up to date.
+- Always use `***hub_endpoint***` for any references to the hub endpoint in documentation, do not hardcode any URLs or endpoints directly in the code or documentation. This is dues security reasons.
 
 ## Flag Capturing
 
