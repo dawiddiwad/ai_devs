@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { config } from '../config'
 import { logger } from '../logger'
-import { getInboxSchema, getThreadSchema, getMessagesSchema, searchSchema, waitSchema } from './definitions'
+import { emailRequestSchema, waitSchema } from './definitions'
 
 async function zmailRequest(payload: Record<string, unknown>, retries = 3): Promise<unknown> {
 	for (let attempt = 1; attempt <= retries; attempt++) {
@@ -32,40 +32,12 @@ async function zmailRequest(payload: Record<string, unknown>, retries = 3): Prom
 	throw new Error('Unreachable')
 }
 
-export async function getInbox(args: unknown): Promise<string> {
-	const parsed = getInboxSchema.parse(args)
-	logger.tool('info', 'getInbox called', { page: parsed.page, perPage: parsed.perPage })
-	const data = await zmailRequest({ action: 'getInbox', page: parsed.page, perPage: parsed.perPage })
-	logger.tool('info', 'getInbox result', { data })
-	return JSON.stringify(data)
-}
-
-export async function getThread(args: unknown): Promise<string> {
-	const parsed = getThreadSchema.parse(args)
-	logger.tool('info', 'getThread called', { threadID: parsed.threadID })
-	const data = await zmailRequest({ action: 'getThread', threadID: parsed.threadID })
-	logger.tool('info', 'getThread result', { data })
-	return JSON.stringify(data)
-}
-
-export async function getMessages(args: unknown): Promise<string> {
-	const parsed = getMessagesSchema.parse(args)
-	logger.tool('info', 'getMessages called', { ids: parsed.ids })
-	const data = await zmailRequest({ action: 'getMessages', ids: parsed.ids })
-	logger.tool('info', 'getMessages result', { data })
-	return JSON.stringify(data)
-}
-
-export async function search(args: unknown): Promise<string> {
-	const parsed = searchSchema.parse(args)
-	logger.tool('info', 'search called', { query: parsed.query, page: parsed.page, perPage: parsed.perPage })
-	const data = await zmailRequest({
-		action: 'search',
-		query: parsed.query,
-		page: parsed.page,
-		perPage: parsed.perPage,
-	})
-	logger.tool('info', 'search result', { data })
+export async function emailRequest(args: unknown): Promise<string> {
+	const parsed = emailRequestSchema.parse(args)
+	const { action, ...params } = parsed
+	logger.tool('info', 'email_request called', { action, params })
+	const data = await zmailRequest({ action, ...params })
+	logger.tool('info', 'email_request result', { action, data })
 	return JSON.stringify(data)
 }
 
