@@ -14,7 +14,10 @@ export interface AgentConfig {
 }
 
 export async function runAgent(agentConfig: AgentConfig, userMessage: string): Promise<string> {
-	const openai = new OpenAI({ apiKey: config.openaiApiKey })
+	const openai = new OpenAI({
+		apiKey: config.openaiApiKey,
+		baseURL: config.openaiBaseUrl,
+	})
 
 	const messages: ChatCompletionMessageParam[] = [
 		{ role: 'system', content: agentConfig.systemPrompt },
