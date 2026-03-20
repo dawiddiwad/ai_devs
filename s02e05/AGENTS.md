@@ -25,6 +25,7 @@
 - Ensure that API keys and sensitive information are stored securely using environment variables, follow `.env.example` for reference.
 - Gracefully handle API rate limits and errors, implementing retry logic where appropriate.
 - When using tools, use `ChatCompletionTool` type form chat completions and use `zod` for any input/output schema validation to ensure data integrity and robustness of the agent's interactions with tools and APIs.
+- The openai v6 SDK has different types for tool calls. The type is a union `ChatCompletionMessageFunctionToolCall | ChatCompletionMessageCustomToolCall`. You need to narrow the type.
 - [reference OpenAI API documentation](https://platform.openai.com/docs/api-reference) for best practices and guidelines on using the API effectively.
 
 ## Documentation
