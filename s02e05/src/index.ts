@@ -12,15 +12,13 @@ async function main(): Promise<void> {
 
 	const openaiClient = new OpenAI({
 		apiKey: config.openaiApiKey,
-		...(config.openaiBaseUrl ? { baseURL: config.openaiBaseUrl } : {}),
+		baseURL: config.openaiBaseUrl,
 	})
 
 	await runAgent(openaiClient)
 }
 
 main().catch((error) => {
-	logger.agent('error', 'Unhandled error in main', {
-		error: error instanceof Error ? error.message : String(error),
-	})
+	logger.agent('error', 'Unhandled error in main', error)
 	process.exit(1)
 })

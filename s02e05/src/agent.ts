@@ -77,7 +77,10 @@ async function executeTool(toolName: string, args: Record<string, unknown>, open
 }
 
 export async function runAgent(openaiClient: OpenAI): Promise<void> {
-	const messages: ChatCompletionMessageParam[] = [{ role: 'system', content: buildSystemPrompt() }]
+	const messages: ChatCompletionMessageParam[] = [
+		{ role: 'system', content: buildSystemPrompt() },
+		{ role: 'user', content: 'Begin the mission. Start by fetching the drone documentation.' },
+	]
 
 	for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
 		logger.agent('info', `Agent iteration ${iteration}/${MAX_ITERATIONS}`)
@@ -101,7 +104,7 @@ export async function runAgent(openaiClient: OpenAI): Promise<void> {
 			logger.agent('info', 'Agent finished without tool calls', {
 				content: assistantMessage.content ?? '',
 			})
-			break
+			process.exit(1)
 		}
 
 		for (const toolCall of assistantMessage.tool_calls) {
