@@ -24,16 +24,23 @@
 - Use the OpenAI API for any natural language processing tasks, ensuring that all interactions with the API are well-structured and error-handled.
 - Ensure that API keys and sensitive information are stored securely using environment variables, follow `.env.example` for reference.
 - Gracefully handle API rate limits and errors, implementing retry logic where appropriate.
-- When using tools, use `ChatCompletionTool` type form chat completions and use `zod` for any input/output schema validation to ensure data integrity and robustness of the agent's interactions with tools and APIs.
+- When using tools, use `ChatCompletionTool` type form chat completions and use `zod` whenever validating LLM input and expecting structured output to ensure data integrity and robustness of the agent's interactions with tools and APIs.
 - The openai v6 SDK has different types for tool calls. The type is a union `ChatCompletionMessageFunctionToolCall | ChatCompletionMessageCustomToolCall`. You need to narrow the type.
 - [reference OpenAI API documentation](https://platform.openai.com/docs/api-reference) for best practices and guidelines on using the API effectively.
 
 ## Documentation
 
 - Whenever you do a functional change to existing code, update any documentation within the project, in particular `spec.md` or `README.md` to reflect the change and ensure that it is up to date.
-- Always use `***hub_endpoint***` for any references to the hub endpoint in documentation, do not hardcode any URLs or endpoints directly in the code or documentation. This is dues security reasons.
+- Always use `***hub_endpoint***` for any references to the agents hub endpoint in documentation, do not hardcode any URLs or endpoints directly in the code or documentation. This is dues security reasons.
 
 ## Flag Capturing
 
 - If task requeires to capture a flag, make sure it is captured programatically by parsing in from text and not through LLM interactions.
 - Whenver the flag is captured, ensure it is imidiately logged in the agent logs and the process is terminated with `0` exit code.
+- When making request to the /verify endpoint, make sure to pass the response even if it failed, like so:
+  ```ts
+  const response = await axios.post(config.verifyEndpoint, payload, {
+  	validateStatus: () => true,
+  })
+  ```
+  This is important, because the flag might be present in the response even if the verification failed.
