@@ -8,8 +8,8 @@ import { KEYWORD_DISCOVERY_PROMPT, CLASSIFICATION_PROMPT } from '../prompts'
 const NGRAM_CANDIDATES_COUNT = 150
 const POSITIVE_NGRAM_FILTER_COUNT = NGRAM_CANDIDATES_COUNT
 const BATCH_SIZE = 1000
-const MAX_NOTES_FOR_LLM = 8000
-const NGRAM_SIZE = 2
+const MAX_NOTES_FOR_LLM = 2000
+const NGRAM_SIZE = 3
 
 const PositiveNgramsSchema = z.object({
 	positive_phrases: z.array(z.string()),

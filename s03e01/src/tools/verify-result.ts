@@ -2,7 +2,7 @@ import axios from 'axios'
 import { config } from '../config'
 import { logger } from '../logger'
 
-const FLAG_REGEX = /\{\{FLG:.*?\}\}/
+const FLAG_REGEX = /\{FLG:.*?\}/
 
 export async function verifyResult(anomalyIds: string[]): Promise<{ response: string; flag: string | null }> {
 	const payload = {

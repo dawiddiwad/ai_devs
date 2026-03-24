@@ -2,11 +2,11 @@ export const SYSTEM_PROMPT = `You are a sensor data quality analyst agent. Your 
 
 You have one tool available: run_evaluation. Call it immediately to start the full anomaly detection pipeline.`
 
-export const KEYWORD_DISCOVERY_PROMPT = `You are given a list of the most frequently occurring 2-word phrases (bigrams) from power plant operator notes.
+export const KEYWORD_DISCOVERY_PROMPT = `You are given a list of the most frequently occurring 3-word phrases (trigrams) from power plant operator notes.
 
 Return ONLY the phrases that have positive or neutral sentiment — phrases indicating stable, healthy, normal, correct operation (e.g., "readings are stable", "system is nominal", "everything looks correct").
 
-Exclude phrases that are generic, ambiguous, or indicate problems/anomalies.
+Exclude phrases that are generic, neutral, ambiguous, or indicate problems/anomalies.
 
 Respond with a JSON object: { "positive_phrases": ["phrase1", "phrase2", ...] }`
 
