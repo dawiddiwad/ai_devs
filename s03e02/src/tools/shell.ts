@@ -13,6 +13,12 @@ export async function executeShellCommand(command: string): Promise<string> {
 			{ validateStatus: () => true }
 		)
 
+		const responseSize = JSON.stringify(response.data).length
+		if (responseSize > 10000) {
+			logger.api.warn('Shell API response is too large to log in full', { length: responseSize })
+			return `Error: Shell API response is too large to display (size: ${responseSize} bytes). Do not open binary files or execute commands with potentially large outputs.`
+		}
+
 		logger.api.info('Shell API response', {
 			status: response.status,
 			data: typeof response.data === 'string' ? response.data.substring(0, 500) : response.data,
