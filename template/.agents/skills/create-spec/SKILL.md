@@ -9,6 +9,7 @@ description: Create a spec.md file based on task.md and lesson.md files.
 - Use lesson.md as an extended reference and inspiration for the possible ways to implement the solution.
 - Adhere to the AGENTS.md guidelines in the project.
 - Ask follow-up questions to clarify the requirements and drive key decisions if needed.
+- As a last step, make sure that the spec is not overly bloated, is easy to read and follow, but is detailed enough to guide the agentic implementation.
 
 ## --- Spec.md Template ---
 

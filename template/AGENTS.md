@@ -35,12 +35,16 @@
 
 ## Flag Capturing
 
-- If task requeires to capture a flag, make sure it is captured programatically by parsing in from text and not through LLM interactions.
-- Whenver the flag is captured, ensure it is imidiately logged in the agent logs and the process is terminated with `0` exit code.
+- If task requeires to capture a flag, make sure it is captured programatically using regex:
+  ```ts
+  const FLAG_REGEX = /\{FLG:.*?\}/
+  ```
+- Flag should be captured only in one place, preferably in a tool or function handling /verify endpoint,
+- Flag is logged immediately and the process is terminated with `0` exit code.
 - When making request to the /verify endpoint, make sure to pass the response even if it failed, like so:
   ```ts
   const response = await axios.post(config.verifyEndpoint, payload, {
   	validateStatus: () => true,
   })
   ```
-  This is important, because the flag might be present in the response even if the verification failed.
+  This is important, because failed responses will usually contain payload with critical feedback from the verification process.
