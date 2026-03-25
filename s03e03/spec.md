@@ -164,20 +164,7 @@ After each step, render a visual display to the terminal using ANSI colors.
 
 ### Layout
 
-```
-REACTOR  Step 002  Robot: col 3  Goal: col 7
-[===========---------------] 42%
-
-   1  2  3  4  5  6  7
-1  .  .  .  B  .  B  .
-2  .  B  .  B  B  B  .
-3  .  B  B  .  B  .  .
-4  .  .  B  .  .  .  .
-5  .  .  P  .  .  .  G
-
-Safety:   -> right: SAFE   || wait: SAFE   <- left: SAFE
-LLM  -> RIGHT  Moving right is safe and progresses toward the goal
-```
+![tui.png](./img/tui.png)
 
 ### Color Scheme (ANSI escape codes)
 
