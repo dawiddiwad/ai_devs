@@ -75,5 +75,6 @@ export function renderReactorState(
 	}
 
 	lines.push('')
+	console.clear()
 	console.log(lines.join('\n'))
 }

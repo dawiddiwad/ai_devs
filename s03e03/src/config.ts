@@ -21,7 +21,7 @@ export const config = {
 	openaiBaseUrl: process.env['OPENAI_BASE_URL'] || undefined,
 	openaiApiKey: requireEnv('OPENAI_API_KEY'),
 	openaiModel: process.env['OPENAI_MODEL'] || 'gpt-5-mini',
-	openaiTemperature: process.env['OPENAI_TEMPERATURE'] ? parseFloat(process.env['OPENAI_TEMPERATURE']) : 0.2,
+	openaiTemperature: process.env['OPENAI_TEMPERATURE'] ? parseFloat(process.env['OPENAI_TEMPERATURE']) : undefined,
 	aiDevsApiKey: requireEnv('AI_DEVS_API_KEY'),
 	verifyEndpoint: `${requireEnv('AI_DEVS_HUB_ENDPOINT')}/verify`,
 	taskName: requireEnv('AI_DEVS_TASK_NAME'),
