@@ -83,7 +83,7 @@ export async function decideMoveWithLlm(state: ReactorResponse, safety: SafetyAn
 			{ role: 'user', content: userPrompt },
 		],
 		tools: [chooseMoveTool],
-		tool_choice: { type: 'function', function: { name: 'choose_move' } },
+		tool_choice: 'required',
 	})
 
 	const message = response.choices[0]?.message
