@@ -1,4 +1,4 @@
-# AI Agent — s03e04: Negotiations (Wind Turbine Parts Finder)
+# Wind Turbine Parts Finder `negotiations`
 
 ## 1. Overview & Goal
 
@@ -67,15 +67,12 @@ Finds cities that sell a specific item. Pass a natural language description of t
 ```
 
 ### Matching Strategy
-Since item names are Polish technical component names (e.g., "Rezystor metalizowany 1 ohm 0.125 W 1%") and agent queries may be natural language ("potrzebuję rezystora 1 ohm"), use **token overlap scoring**:
+Since item names are Polish technical component names (e.g., "Rezystor metalizowany 1 ohm 0.125 W 1%") and agent queries may be in any language or inflection form, use a **two-stage approach**:
 
-1. Normalize both query and item names: lowercase, remove punctuation
-2. Tokenize into words, filter stop words (potrzebuję, mam, jest, itp.)
-3. Score each item: count matching tokens / total query tokens
-4. Return the item with the highest score
-5. If score = 0, return "No matching item found. Try different keywords."
+1. **Trigram pre-filter** — compute rolling character 3-grams for all item names at load time. Score each item by overlap with query trigrams. Take top 40 candidates (or all items if fewer than 3 candidates have any overlap). This is language-agnostic and handles Polish inflection well (e.g., "turbinę" shares most grams with "turbina").
+2. **LLM semantic match** — send the top candidates to an LLM (structured output via `zodFunction`) and ask it to identify the best match. Returns `NONE` if nothing matches.
 
-This is deterministic, fast, and requires no LLM call on the tool server side.
+This handles natural language queries in any language without hardcoded stop words.
 
 ---
 
@@ -84,26 +81,26 @@ This is deterministic, fast, and requires no LLM call on the tool server side.
 ### Server startup (`src/server.ts`)
 ```
 START
-  ├─ 1. Load and parse all three CSVs into memory (Maps for O(1) lookup)
-  │      cityCodeToName: Map<string, string>
-  │      itemNameToCode: Array<{ name: string, code: string, tokens: string[] }>
-  │      itemCodeToCities: Map<string, string[]>
-  ├─ 2. Start Express on SERVER_PORT
-  └─ 3. Register POST /find handler
+  ├─ 1. Load catalog: parse all three CSVs into memory
+  │      cityByCode: Map<string, string>
+  │      items: Array<{ name, code, trigrams: Set<string> }>
+  │      citiesByItemCode: Map<string, string[]>
+  ├─ 2. Create CityFinder (wraps ItemMatcher + CandidateSelector)
+  ├─ 3. Start Express on SERVER_PORT
+  └─ 4. Register POST /find handler
 ```
 
 ### POST /find handler
 ```
 REQUEST RECEIVED
-  ├─ 1. Extract params from body
-  ├─ 2. Tokenize and normalize params
-  ├─ 3. Score all items by token overlap
-  ├─ 4. Take best match (score > 0)
-  │      IF no match → return { output: "No item found. Try rephrasing." }
-  ├─ 5. Lookup itemCodeToCities for best match's code
-  ├─ 6. Map city codes → city names
-  ├─ 7. Build response string (trim to < 500 bytes)
-  └─ 8. Return { output: "Cities selling [item name]: City1, City2, ..." }
+  ├─ 1. Extract and validate params (string required)
+  ├─ 2. selectCandidates: trigram-score all items → top 40
+  ├─ 3. matchItem: LLM picks exact item from candidates (or NONE)
+  │      IF no match → return { output: "No matching item found. Try rephrasing the query." }
+  ├─ 4. Lookup citiesByItemCode for matched item code
+  ├─ 5. Map city codes → city names
+  ├─ 6. Build response string (truncate if > 490 bytes)
+  └─ 7. Return { output: "Cities selling [item name]: City1, City2, ..." }
 ```
 
 ### Registration & polling (`src/index.ts`)
@@ -138,48 +135,26 @@ START
 
 ---
 
-## 5. Data Loading Implementation
+## 5. Matching Implementation
 
-### CSV parsing (no external lib needed — simple split)
+### Trigram computation (`src/trigram.ts`)
 ```ts
-// cities.csv → Map<code, name>
-const cityCodeToName = new Map<string, string>()
-
-// items.csv → scored search array
-interface ItemEntry { name: string; code: string; tokens: Set<string> }
-const items: ItemEntry[] = []
-
-// connections.csv → Map<itemCode, cityCode[]>
-const itemCodeToCities = new Map<string, string[]>()
-```
-
-### Tokenizer
-```ts
-function tokenize(text: string): Set<string> {
-  const STOP_WORDS = new Set(['potrzebuję', 'mam', 'jest', 'the', 'a', 'i', 'do', 'w'])
-  return new Set(
-    text.toLowerCase()
-      .replace(/[^\w\s]/g, ' ')
-      .split(/\s+/)
-      .filter(t => t.length > 1 && !STOP_WORDS.has(t))
-  )
-}
-```
-
-### Scorer
-```ts
-function findBestItem(query: string): ItemEntry | null {
-  const queryTokens = tokenize(query)
-  let best: ItemEntry | null = null
-  let bestScore = 0
-  for (const item of items) {
-    const overlap = [...queryTokens].filter(t => item.tokens.has(t)).length
-    const score = overlap / queryTokens.size
-    if (score > bestScore) { bestScore = score; best = item }
+function computeTrigrams(text: string): Set<string> {
+  const normalized = text.toLowerCase().replace(/[^\w]/g, '')
+  const grams = new Set<string>()
+  for (let i = 0; i <= normalized.length - 3; i++) {
+    grams.add(normalized.slice(i, i + 3))
   }
-  return bestScore > 0 ? best : null
+  return grams
 }
 ```
+Trigrams are computed once at load time for each item and stored in `CatalogItem.trigrams`.
+
+### Candidate selection (`src/candidate-selector.ts`)
+Score every item by trigram overlap with the query, return the top 40. Fall back to the first 40 items if fewer than 3 items have any overlap (very short or unrecognizable query).
+
+### LLM matching (`src/item-matcher.ts`)
+Sends the candidate list to OpenAI using structured output (`zodFunction` + `completions.parse`). The model returns the exact item code or `NONE`. Uses a factory `createItemMatcher()` to initialise the OpenAI client once.
 
 ---
 
@@ -192,11 +167,16 @@ s03e04/
 ├── package.json
 ├── tsconfig.json
 └── src/
-    ├── index.ts       # Register tools + poll for flag
-    ├── server.ts      # Express tool server
-    ├── config.ts      # requireEnv() config
-    ├── logger.ts      # Structured logging
-    └── data-loader.ts # CSV parsing + search logic
+    ├── index.ts               # Register tools + poll for flag
+    ├── server.ts              # Express tool server (thin)
+    ├── config.ts              # requireEnv() config
+    ├── logger.ts              # Structured logging
+    ├── csv.ts                 # CSV pair parser
+    ├── trigram.ts             # Trigram computation + overlap scoring
+    ├── catalog.ts             # Data loading: CatalogItem, Catalog, loadCatalog()
+    ├── candidate-selector.ts  # Trigram-based pre-filter
+    ├── item-matcher.ts        # LLM matching via createItemMatcher() factory
+    └── city-finder.ts         # Orchestration via createCityFinder() factory
 ```
 
 ### package.json additions
@@ -218,18 +198,25 @@ s03e04/
 ---
 
 ## 8. Key Gotchas
-1. **Response size**: Keep output under 500 bytes. If many cities match, truncate with "... and N more".
-2. **Natural language params**: Agent may send Polish natural language, not exact item names — tokenizer must handle this.
+1. **Response size**: Keep output under 500 bytes. If many cities match, truncate with "and N more".
+2. **Natural language params**: Agent may send queries in any language or inflected form — trigrams handle this without hardcoded stop words.
 3. **Async verification**: After registering tools, the external agent takes 30–120 seconds. Poll with `action: "check"`, don't just wait once.
 4. **validateStatus**: Always use `validateStatus: () => true` on axios calls to `/verify` — error responses may contain useful feedback or the flag.
 5. **Server must be running** before registering tools with centrala (agent will call immediately).
-6. **No LLM on server**: Keep the tool server stateless and fast — pure in-memory lookup.
+6. **LLM on server**: Each `/find` call makes one OpenAI request. OpenAI client is created once via `createItemMatcher()` factory at server startup.
 
 ---
 
 ## 9. Acceptance Criteria
 - [ ] `POST /find` returns `{ output: "..." }` within 500 bytes for any item query
-- [ ] Token scoring returns correct city list for known items
+- [ ] Trigram pre-filter narrows candidates; LLM returns correct item for known queries
+- [ ] Queries in any language / inflected form match correctly (no hardcoded stop words)
 - [ ] Tool registered with centrala successfully
 - [ ] Flag captured after polling `action: "check"`
 - [ ] Server runs on SSH host and is publicly reachable
+
+## 10. Deployment Steps
+1. Add `.env` vars: `PUBLIC_BASE_URL`, `SERVER_PORT`, `OPENAI_API_KEY`, `OPENAI_MODEL`
+2. Deploy to SSH server: `scp -P $SERVER_PORT -r dist/ data/ .env package.json $AZYL_USERNAME@$AZYL_BASE_URL:~/$DIR/`
+3. On SSH host: `npm install --production && npm run start:server`
+4. Locally: `npm run capture:flag`

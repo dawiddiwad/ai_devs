@@ -18,4 +18,7 @@ export const config = {
 	serverPort: parseInt(process.env['SERVER_PORT'] || '1234', 10),
 	publicBaseUrl: requireEnv('PUBLIC_BASE_URL'),
 	dataDir: path.resolve(__dirname, '..', 'data'),
+	openaiApiKey: requireEnv('OPENAI_API_KEY'),
+	openaiBaseUrl: process.env['OPENAI_BASE_URL'] || undefined,
+	openaiModel: process.env['OPENAI_MODEL'] || 'gpt-5-mini',
 }

@@ -8,10 +8,8 @@
 	"main": "dist/index.js",
 	"scripts": {
 		"build": "npm run compile:check && npm run lint:check && npm run format:check && tsc",
-		"start": "npm run build && node dist/index.js",
-		"start:server": "npm run build && node dist/server.js",
-		"dev": "npx ts-node src/index.ts",
-		"dev:server": "npx ts-node src/server.ts",
+		"capture:flag": "node dist/index.js",
+		"start:server": "node dist/server.js",
 		"compile:check": "npx tsc --noEmit",
 		"lint:check": "eslint .",
 		"lint:fix": "eslint . --fix",
