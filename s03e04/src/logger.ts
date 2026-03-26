@@ -48,7 +48,8 @@ function log(category: LogCategory, level: LogLevel, message: string, context?: 
  * The logger can be extended in the future to support additional log levels, categories, or output formats as needed.
  */
 export const logger = {
-	agent: (level: LogLevel, message: string, context?: Record<string, unknown>) => log('agent', level, message, context),
+	agent: (level: LogLevel, message: string, context?: Record<string, unknown>) =>
+		log('agent', level, message, context),
 
 	tool: (level: LogLevel, message: string, context?: Record<string, unknown>) => log('tool', level, message, context),
 

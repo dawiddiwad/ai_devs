@@ -4,3 +4,6 @@ test-reports
 test-results
 node_modules
 playwright-report
+.sfdx
+.claude
+*.md
