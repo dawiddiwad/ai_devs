@@ -1,0 +1,1 @@
+Update any documentation related to the project, including spec.md, README.md, etc. Make sure to reflect any recent changes in the codebase, preserving the tone, style and formatting conventions used in the existing documentation. Keep the updates brief and focused on the changes made, without being overly verbose.
