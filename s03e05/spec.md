@@ -4,7 +4,7 @@
 
 ### Task Summary
 
-Build an agent that discovers available tools via a `toolsearch` API, gathers map/vehicle/movement-rules data, then uses LLM reasoning to plan an optimal route for a messenger crossing a 10×10 terrain grid. Constraints: 10 food portions + 10 fuel units. The messenger can switch vehicles mid-route (or walk). Submit the route to `/verify`.
+Build an agent that discovers available tools via a `toolsearch` API, gathers map and vehicle data, then delegates all computation to a JS sandbox — because asking an LLM to navigate a grid manually is an act of torture that ends in oblivion. The messenger must cross a 10×10 terrain grid and reach city Skolwin within 10 fuel units and 10 food portions.
 
 ### Hardcoded Inputs / Initial Data
 
@@ -35,36 +35,9 @@ First element is the starting vehicle name, rest are directional moves (`up`, `d
 
 ## 2. Agent Persona & Prompt Strategy
 
-### System Prompt
+The system prompt is deliberately minimal — it describes the mission and rules without prescribing algorithms. The LLM discovers the structure of the problem through tool calls and solves it using the JS sandbox however it sees fit.
 
-```markdown
-You are a strategic expedition planner. Your mission: plan the optimal route
-for a messenger crossing a 10×10 terrain grid to reach city Skolwin.
-
-## Resources
-
-- 10 fuel units and 10 food portions — do not exceed either
-- Each move consumes fuel (based on vehicle speed) AND food (based on travel time)
-- Faster movement burns more fuel; slower movement burns more food
-- You may switch vehicles mid-route or continue on foot (foot: no fuel cost)
-
-## Workflow
-
-1. Discover tools via tool_search — use multiple distinct queries to find all relevant tools:
-   - terrain map, vehicles, movement rules, starting position, goal location
-2. Use discovered tools to collect: map layout, vehicle list + stats, terrain movement costs
-3. Reason carefully: track remaining fuel and food for each possible route
-4. Choose a vehicle (or sequence of vehicles), plan exact moves
-5. Submit route via submit_route
-
-## Rules
-
-- All tool queries must be in English
-- tool_search returns at most 3 results — query with varied terms to find everything
-- Never assume tool endpoints — always discover them first
-- Think step by step about resource consumption before committing to a route
-- If a route risks running out of fuel or food, reconsider
-```
+See `src/prompts.ts` for the current prompt.
 
 ---
 
@@ -74,21 +47,11 @@ for a messenger crossing a 10×10 terrain grid to reach city Skolwin.
 
 **Description:** Discovers available tools by natural language or keyword query.
 
-**Input Schema:**
-
-```json
-{
-	"type": "object",
-	"properties": {
-		"query": { "type": "string", "description": "Natural language or keyword query in English" }
-	},
-	"required": ["query"]
-}
-```
+**Input:** `{ query: string }`
 
 **Behavior:** POSTs `{ apikey, query }` to `***hub_url***/api/toolsearch`.
 
-**Returns:** JSON array of up to 3 tool descriptors, each including the tool's endpoint URL and description.
+**Returns:** JSON array of up to 3 tool descriptors with endpoint URLs and descriptions. Use varied queries — it returns at most 3 results per call.
 
 ---
 
@@ -96,48 +59,39 @@ for a messenger crossing a 10×10 terrain grid to reach city Skolwin.
 
 **Description:** Calls any discovered tool endpoint with a query.
 
-**Input Schema:**
+**Input:** `{ endpoint: string, query: string, reasoning: string }`
 
-```json
-{
-	"type": "object",
-	"properties": {
-		"endpoint": { "type": "string", "description": "Full URL of the discovered tool" },
-		"query": { "type": "string", "description": "Natural language query in English" }
-	},
-	"required": ["endpoint", "query"]
-}
-```
-
-**Behavior:** POSTs `{ apikey, query }` to the given `endpoint`. Uses `validateStatus: () => true`.
+**Behavior:** POSTs `{ apikey, query }` to the given endpoint. Uses `validateStatus: () => true`.
 
 **Returns:** Raw JSON response from the tool (string).
 
 ---
 
-### 3.3 `submit_route`
+### 3.3 `execute_js`
+
+**Description:** Executes JavaScript in a sandboxed vanilla JS environment. The model's escape hatch from spatial reasoning — write code, get answers.
+
+**Input:** `{ code: string }`
+
+**Behavior:** Runs code via Node.js `vm.runInNewContext` with a 5-second timeout. `console.log` output is captured. The value of the last expression is returned as `result`.
+
+**Available globals:** `JSON`, `Math`, `Array`, `Object`, `Map`, `Set`, `String`, `Number`, `Boolean`, `console`. No `require`, `fetch`, or `process`.
+
+**Returns:** `{ result: unknown, logs: string[] }` or `{ error: string, logs: string[] }`.
+
+**Typical use:** Embed map and vehicle data inline, implement BFS/Dijkstra or any pathfinding algorithm, return the route array.
+
+---
+
+### 3.4 `submit_route`
 
 **Description:** Submits the planned route to the verification endpoint.
 
-**Input Schema:**
+**Input:** `{ answer: string[] }` — first element is vehicle name, rest are moves.
 
-```json
-{
-	"type": "object",
-	"properties": {
-		"answer": {
-			"type": "array",
-			"items": { "type": "string" },
-			"description": "Route array: first element is vehicle name, rest are moves (up/down/left/right)"
-		}
-	},
-	"required": ["answer"]
-}
-```
+**Behavior:** POSTs `{ task: "savethem", apikey, answer }` to `/verify`. Captures flag via `/\{FLG:.*?\}/`. Returns raw response text — errors contain useful hints.
 
-**Behavior:** POSTs `{ task: "savethem", apikey, answer }` to `/verify`. Captures flag via regex `/\{FLG:.*?\}/`. Returns raw response text (error responses contain useful feedback).
-
-**Returns:** Response text — flag if successful, error/hint otherwise. Logs flag and calls `process.exit(0)` on capture.
+**Returns:** Flag on success (`process.exit(0)`), error/hint on failure.
 
 ---
 
@@ -145,30 +99,26 @@ for a messenger crossing a 10×10 terrain grid to reach city Skolwin.
 
 ```
 START
-  ├─ 1. tool_search("terrain map grid")
-  ├─ 2. tool_search("vehicles fuel consumption speed")
-  ├─ 3. tool_search("movement rules terrain cost walk")
-  ├─ 4. use_tool(map endpoint, "get map")
-  ├─ 5. use_tool(vehicles endpoint, "list all vehicles with stats")
-  ├─ 6. use_tool(rules endpoint, "movement cost per terrain per vehicle")
-  ├─ 7. [additional tool queries as needed to fill gaps]
-  ├─ 8. Reason: simulate routes, track fuel+food, find optimal path
-  ├─ 9. submit_route(["vehicle_name", "right", "up", ...])
-  └─ END — flag captured → exit(0)
+  ├─ Through darkened corridors of algorithmic dread, the agent summons forth its eldritch tools
+  │   ├─ `tool_search` to pierce the veil and divine the hidden apparatus
+  │   ├─ `use_tool` to wrest from the abyss the cursed knowledge: map, vehicles, and the laws that govern motion
+  │   ├─ `execute_js` to inscribe terrible formulae upon the void—Dijkstra's phantom waltz, BFS through dimensions untold
+  │   └─ `submit_route` to deliver the wretched answer to the keeper of gates, and seize the flag—that most unholy sigil—from the darkness
+  └─ END
 ```
 
 ### Key Decision Points
 
-- toolsearch returns max 3 results — LLM must use varied queries (`map`, `terrain`, `grid`, `navigate`, `path`) to discover all tools
-- If submit fails, response text contains hints — LLM should retry with corrected route
-- Vehicle switching: the answer array can include a vehicle switch by... (discover via tools what switching syntax looks like, if any)
+- `tool_search` returns max 3 results per query — use varied terms to find all tools
+- Vehicle switching mid-route is allowed; discover the syntax from the API if needed
+- `execute_js` is stateless — embed all data inline each call
 - Max agent loop iterations: 30
 
 ---
 
 ## 5. Dependencies & Environment
 
-### package.json additions
+### Packages
 
 | Package  | Purpose                                        |
 | -------- | ---------------------------------------------- |
@@ -177,11 +127,13 @@ START
 | `zod`    | Schema validation                              |
 | `dotenv` | Env loading                                    |
 
+Node's built-in `vm` module handles the JS sandbox — no additional dependency.
+
 ### Environment Variables
 
 ```env
 OPENAI_API_KEY=...
-OPENAI_MODEL=gpt-4.1          # Reasoning-capable model recommended (o4-mini also works)
+OPENAI_MODEL=gpt-4.1          # Reasoning-capable model strongly recommended
 AI_DEVS_API_KEY=...
 AI_DEVS_TASK_NAME=savethem
 AI_DEVS_HUB_ENDPOINT=...      # Base URL (no trailing slash)
@@ -192,7 +144,7 @@ AI_DEVS_HUB_ENDPOINT=...      # Base URL (no trailing slash)
 ```
 s03e05/
 └── src/
-    ├── index.ts               # Entry: calls main(), logs errors, exit(1)
+    ├── index.ts               # Entry point
     ├── agent.ts               # Agent loop (max 30 iterations)
     ├── config.ts              # requireEnv() config
     ├── logger.ts              # Structured logging: agent/tool/api × info/warn/error/debug
@@ -201,6 +153,7 @@ s03e05/
     └── tools/
         ├── tool-search.ts     # Wraps toolsearch endpoint
         ├── use-tool.ts        # Calls any discovered tool endpoint
+        ├── execute-js.ts      # vm sandbox for arbitrary JS computation
         └── submit-route.ts    # POST /verify + flag capture
 ```
 
@@ -209,19 +162,25 @@ s03e05/
 ## 6. Key Implementation Notes
 
 1. `toolsearch` and all discovered tools share the same call signature: `{ apikey, query }` → JSON
-2. The `use_tool` function must forward `apikey` from config — agent only provides `endpoint` + `query`
-3. `submit_route` must use `validateStatus: () => true` and always return response text (error = hint)
-4. Flag regex: `/\{FLG:.*?\}/` — match in `submit_route`, log, `process.exit(0)`
-5. Tool executor map pattern (not switch): `Record<string, (args: unknown) => Promise<string>>`
-6. Agent loop: push each LLM message and tool result to `messages` array; break when no tool calls
-7. A reasoning model (o4-mini, gpt-4.1) is strongly preferred — route optimization with resource constraints benefits from extended thinking
+2. `use_tool` forwards `apikey` from config — the agent provides only `endpoint` + `query`
+3. `submit_route` uses `validateStatus: () => true` and always returns response text (errors = hints)
+4. Flag regex: `/\{FLG:.*?\}/` — matched in `submit_route`, logged, `process.exit(0)`
+5. `execute_js` is synchronous inside the sandbox — no async/await in the submitted code
+6. The JS sandbox has no network access; all data must be embedded inline from prior `use_tool` calls
+7. Tool executor map pattern: `Record<string, (args: unknown) => Promise<string>>`
 
 ---
 
-## 7. Acceptance Criteria
+## 7. Design Rationale: Why a JS Sandbox?
+
+LLMs fail at grid navigation for a simple reason: tracking coordinates across 15+ sequential moves while managing two depleting resources is a spatial reasoning task, not a language task. Earlier approaches tried specialized tools (`analyze_map`, `simulate_route`, `plan_route`) but each added assumptions about map format, vehicle switching syntax, and terrain costs. The sandbox collapses all of that into one general tool — the model writes whatever algorithm it needs and executes it. The map format stops mattering. The vehicle switching semantics stop mattering. The model just solves the problem in code - once the terrible computation is complete.
+
+---
+
+## 8. Acceptance Criteria
 
 - [ ] Agent discovers map, vehicles, and movement rules via toolsearch
-- [ ] LLM reasons about fuel/food constraints and plans a valid route
+- [ ] Route computed via `execute_js` (not manual LLM reasoning)
 - [ ] Route submitted as `["vehicle_name", "dir", ...]` to `/verify`
 - [ ] Flag captured via regex, logged, `process.exit(0)`
 - [ ] Builds cleanly (`npm run build`)

@@ -17,8 +17,7 @@ export const submitRouteDefinition: ChatCompletionTool = {
 				answer: {
 					type: 'array',
 					items: { type: 'string' },
-					description:
-						'Route array: first element is always the vehicle name, rest are moves (up/down/left/right)',
+					description: `Route array: first element is always the vehicle name, rest are moves. Use 'dismount' to switch to walk at any point. Example: ["vehicle", "up", "up", "right", "dismount", "right", "down"]`,
 				},
 			},
 			required: ['answer'],

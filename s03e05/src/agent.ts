@@ -6,6 +6,7 @@ import { SYSTEM_PROMPT } from './prompts'
 import { searchToolDefinition, toolSearch } from './tools/tool-search'
 import { useToolDefinition, useTool } from './tools/use-tool'
 import { submitRouteDefinition, submitRoute } from './tools/submit-route'
+import { executeJsDefinition, executeJs } from './tools/execute-js'
 
 const MAX_ITERATIONS = 30
 
@@ -13,9 +14,10 @@ const toolExecutors: Record<string, (args: unknown) => Promise<string>> = {
 	tool_search: toolSearch,
 	use_tool: useTool,
 	submit_route: submitRoute,
+	execute_js: executeJs,
 }
 
-const toolDefinitions = [searchToolDefinition, useToolDefinition, submitRouteDefinition]
+const toolDefinitions = [searchToolDefinition, useToolDefinition, executeJsDefinition, submitRouteDefinition]
 
 export async function runAgent(): Promise<void> {
 	const client = new OpenAI({
@@ -40,7 +42,6 @@ export async function runAgent(): Promise<void> {
 			messages,
 			tools: toolDefinitions,
 			tool_choice: 'required',
-			parallel_tool_calls: true,
 			temperature: config.openaiTemperature,
 		})
 
