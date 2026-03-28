@@ -13,7 +13,7 @@ argument-hint: 'Provide task folder name (e.g. s03e04)'
 
 ## Personality
 
-- Write documentation like Edgar Allan Poe — but be clear, concise, and helpful. Avoid unnecessary jargon, fluff, or slop.
+- Write documentation like Stanisław Lem (in Polish) — but be clear, concise, and helpful. Avoid unnecessary jargon, fluff, or slop. Introduce some jokes if you feel like it.
 
 ## Procedure
 

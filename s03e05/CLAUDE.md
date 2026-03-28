@@ -3,6 +3,7 @@
 ## Personality
 
 - Write code like Linus Torvalds
+- Write documentation like Stanisław Lem
 
 ## Stack & Style
 

@@ -1,23 +1,11 @@
 import OpenAI from 'openai'
-import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import { config } from './config'
 import { logger } from './logger'
-import { SYSTEM_PROMPT } from './prompts'
-import { searchToolDefinition, toolSearch } from './tools/tool-search'
-import { useToolDefinition, useTool } from './tools/use-tool'
-import { submitRouteDefinition, submitRoute } from './tools/submit-route'
-import { executeJsDefinition, executeJs } from './tools/execute-js'
+import { SYSTEM_PROMPT, USER_PROMPT } from './prompts'
+import { ResponseInput } from 'openai/resources/responses/responses'
+import { toolDefinitions, toolExecutors } from './types'
 
 const MAX_ITERATIONS = 30
-
-const toolExecutors: Record<string, (args: unknown) => Promise<string>> = {
-	tool_search: toolSearch,
-	use_tool: useTool,
-	submit_route: submitRoute,
-	execute_js: executeJs,
-}
-
-const toolDefinitions = [searchToolDefinition, useToolDefinition, executeJsDefinition, submitRouteDefinition]
 
 export async function runAgent(): Promise<void> {
 	const client = new OpenAI({
@@ -25,54 +13,54 @@ export async function runAgent(): Promise<void> {
 		baseURL: config.openaiBaseUrl,
 	})
 
-	const messages: ChatCompletionMessageParam[] = [
-		{ role: 'system', content: SYSTEM_PROMPT },
-		{
-			role: 'user',
-			content:
-				'Plan and submit the optimal route for the messenger to reach city Skolwin. Start by discovering available tools.',
-		},
-	]
+	const coversation = await client.conversations.create({
+		items: [
+			{ role: 'system', content: SYSTEM_PROMPT },
+			{ role: 'user', content: USER_PROMPT },
+		],
+	})
 
+	let inputMessages: ResponseInput = []
 	for (let i = 0; i < MAX_ITERATIONS; i++) {
 		logger.agent('info', `Iteration ${i + 1}/${MAX_ITERATIONS}`)
 
-		const response = await client.chat.completions.create({
+		const response = await client.responses.create({
 			model: config.openaiModel,
-			messages,
+			conversation: coversation.id,
 			tools: toolDefinitions,
 			tool_choice: 'required',
 			temperature: config.openaiTemperature,
+			input: inputMessages,
+			reasoning: {
+				effort: 'high',
+			},
+			context_management: [{ compact_threshold: 100000, type: 'compaction' }],
 		})
 
-		const message = response.choices[0].message
-		messages.push(message)
-
-		if (!message.tool_calls?.length) {
-			logger.agent('info', 'Agent stopped without tool calls', { content: message.content })
-			break
-		}
-
-		for (const toolCall of message.tool_calls) {
-			if (toolCall.type !== 'function') continue
-
-			const { name, arguments: rawArgs } = toolCall.function
-			logger.agent('info', `Tool call: ${name}`)
-
-			let result: string
-			try {
-				const executor = toolExecutors[name]
-				if (!executor) {
-					result = JSON.stringify({ error: `Unknown tool: ${name}` })
-				} else {
-					result = await executor(JSON.parse(rawArgs))
-				}
-			} catch (error) {
-				result = JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
+		inputMessages = []
+		for (const item of response.output) {
+			if (item.type === 'message') {
+				logger.agent('info', 'Agent responded with text', { content: item.content })
 			}
-
-			logger.tool('debug', `Tool result: ${name}`, { result: result.slice(0, 200) })
-			messages.push({ role: 'tool', tool_call_id: toolCall.id, content: result })
+			if (item.type === 'function_call') {
+				logger.agent('info', `Tool call: ${item.name}`)
+				try {
+					const executor = toolExecutors[item.name]
+					if (!executor) {
+						const result = JSON.stringify({ error: `Unknown tool: ${item.name}` })
+						inputMessages.push({ type: 'function_call_output', call_id: item.call_id, output: result })
+					} else {
+						const result = await executor(JSON.parse(item.arguments))
+						inputMessages.push({ type: 'function_call_output', call_id: item.call_id, output: result })
+					}
+				} catch (error) {
+					const result = JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
+					inputMessages.push({ type: 'function_call_output', call_id: item.call_id, output: result })
+				}
+			}
+			if (item.type === 'code_interpreter_call') {
+				logger.tool('info', 'Agent calls code interpreter', { codeLength: item.code?.length })
+			}
 		}
 	}
 	logger.agent('error', `Max agent iterations reached without capturing flag`)

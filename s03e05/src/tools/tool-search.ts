@@ -1,23 +1,22 @@
 import axios from 'axios'
-import type { ChatCompletionTool } from 'openai/resources/chat/completions'
 import { config } from '../config'
 import { logger } from '../logger'
 import { ToolSearchArgsSchema } from '../types'
+import { FunctionTool } from 'openai/resources/responses/responses'
 
-export const searchToolDefinition: ChatCompletionTool = {
+export const searchToolDefinition: FunctionTool = {
 	type: 'function',
-	function: {
-		name: 'tool_search',
-		description:
-			'Discovers available tools. Query returns only up to 3 tools at once with endpoint URLs and descriptions.',
-		parameters: {
-			type: 'object',
-			properties: {
-				query: { type: 'string', description: 'Natural language or keyword query' },
-			},
-			required: ['query'],
+	name: 'tool_search',
+	description: 'Tool for discovering available tools. Returns only up to 3 best matching results for the query.',
+	parameters: {
+		type: 'object',
+		properties: {
+			query: { type: 'string', description: 'Natural language or keyword query' },
 		},
+		required: ['query'],
+		additionalProperties: false,
 	},
+	strict: true,
 }
 
 export async function toolSearch(args: unknown): Promise<string> {
@@ -35,7 +34,7 @@ export async function toolSearch(args: unknown): Promise<string> {
 		{ validateStatus: () => true }
 	)
 
-	logger.api('info', 'toolsearch response', { status: response.status })
+	logger.api('info', 'toolsearch response', { status: response.status, response: response.data })
 
 	const result = typeof response.data === 'string' ? response.data : JSON.stringify(response.data)
 	return result
