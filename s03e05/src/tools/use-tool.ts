@@ -33,7 +33,7 @@ export async function useTool(args: unknown): Promise<string> {
 	const { endpoint, query, reasoning } = parsed.data
 	logger.tool('info', 'use_tool', { endpoint, query, reasoning })
 
-	const response = await axios.post(endpoint, { apikey: config.aiDevsApiKey, query }, { validateStatus: () => true })
+	const response = await axios.post(endpoint, { apikey: config.aidevsApiKey, query }, { validateStatus: () => true })
 
 	logger.api('info', 'tool response', { endpoint, status: response.status, response: response.data })
 

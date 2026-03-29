@@ -1,4 +1,5 @@
 import dotenv from 'dotenv'
+import { ReasoningEffort } from 'openai/resources/shared'
 
 dotenv.config()
 
@@ -10,6 +11,8 @@ function requireEnv(name: string): string {
 	return value
 }
 
+const aidevsHubEndpoint = requireEnv('AI_DEVS_HUB_ENDPOINT')
+
 /**
  * Configuration module for the agent framework.
  * Loads environment variables using dotenv and provides a structured config object for use throughout the application.
@@ -17,16 +20,15 @@ function requireEnv(name: string): string {
  * This centralizes configuration management and allows for easy access to settings like API keys, model names, and endpoint URLs.
  * The config object can be extended in the future to include additional settings as needed.
  */
-const hubEndpoint = requireEnv('AI_DEVS_HUB_ENDPOINT')
-
 export const config = {
 	openaiBaseUrl: process.env['OPENAI_BASE_URL'] || undefined,
 	openaiApiKey: requireEnv('OPENAI_API_KEY'),
 	openaiModel: process.env['OPENAI_MODEL'] || 'gpt-5-mini',
 	openaiTemperature: process.env['OPENAI_TEMPERATURE'] ? parseFloat(process.env['OPENAI_TEMPERATURE']) : undefined,
-	aiDevsApiKey: requireEnv('AI_DEVS_API_KEY'),
-	hubEndpoint,
-	verifyEndpoint: `${hubEndpoint}/verify`,
-	toolSearchEndpoint: `${hubEndpoint}/api/toolsearch`,
-	taskName: requireEnv('AI_DEVS_TASK_NAME'),
+	openaiReasoningEffort: (process.env['OPENAI_REASONING_EFFORT'] as ReasoningEffort) || undefined,
+	aidevsHubEndpoint: aidevsHubEndpoint,
+	aidevsVerifyEndpoint: `${aidevsHubEndpoint}/verify`,
+	aidevsToolSearchEndpoint: `${aidevsHubEndpoint}/api/toolsearch`,
+	aidevsApiKey: requireEnv('AI_DEVS_API_KEY'),
+	aidevsTaskName: requireEnv('AI_DEVS_TASK_NAME'),
 }

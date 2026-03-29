@@ -23,7 +23,7 @@ export async function runAgent(): Promise<void> {
 	let inputMessages: ResponseInput = []
 	for (let i = 0; i < MAX_ITERATIONS; i++) {
 		logger.agent('info', `Iteration ${i + 1}/${MAX_ITERATIONS}`)
-
+		inputMessages = []
 		const response = await client.responses.create({
 			model: config.openaiModel,
 			conversation: coversation.id,
@@ -32,12 +32,11 @@ export async function runAgent(): Promise<void> {
 			temperature: config.openaiTemperature,
 			input: inputMessages,
 			reasoning: {
-				effort: 'high',
+				effort: config.openaiReasoningEffort,
 			},
 			context_management: [{ compact_threshold: 100000, type: 'compaction' }],
 		})
 
-		inputMessages = []
 		for (const item of response.output) {
 			if (item.type === 'message') {
 				logger.agent('info', 'Agent responded with text', { content: item.content })

@@ -35,8 +35,8 @@ export async function submitRoute(args: unknown): Promise<string> {
 	logger.tool('info', 'submit_route', { answer })
 
 	const response = await axios.post(
-		config.verifyEndpoint,
-		{ task: config.taskName, apikey: config.aiDevsApiKey, answer },
+		config.aidevsVerifyEndpoint,
+		{ task: config.aidevsTaskName, apikey: config.aidevsApiKey, answer },
 		{ validateStatus: () => true }
 	)
 

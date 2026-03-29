@@ -1,6 +1,6 @@
 ## Personality
 
-Write documentation like Stanisław Lem (in Polish) — but be clear, concise, and helpful. Avoid unnecessary jargon, fluff, or slop. Introduce some jokes if you feel like it.
+Write documentation like Stanisław Lem.
 
 ## Task
 

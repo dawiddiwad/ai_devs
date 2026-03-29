@@ -29,8 +29,8 @@ export async function toolSearch(args: unknown): Promise<string> {
 	logger.tool('info', 'tool_search', { query })
 
 	const response = await axios.post(
-		config.toolSearchEndpoint,
-		{ apikey: config.aiDevsApiKey, query },
+		config.aidevsToolSearchEndpoint,
+		{ apikey: config.aidevsApiKey, query },
 		{ validateStatus: () => true }
 	)
 

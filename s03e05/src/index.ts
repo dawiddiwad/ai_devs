@@ -3,7 +3,7 @@ import { logger } from './logger'
 import { runAgent } from './agent'
 
 async function main() {
-	logger.agent('info', 'Starting task', { task: config.taskName })
+	logger.agent('info', 'Starting task', { task: config.aidevsTaskName })
 	await runAgent()
 }
 
