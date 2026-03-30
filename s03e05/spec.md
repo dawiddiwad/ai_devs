@@ -1,25 +1,25 @@
-# Traktat o Wytyczaniu Optymalnej Trajektorii `savethem`
+# Specification: `savethem` Navigation Task
 
-## 1. Prolegomena i Cel Ostateczny
+## 1. Objective
 
-Zadanie, przed którym stajemy, polega na powołaniu do bytu wirtualnego homunkulusa, który metodą dedukcji i zapytań odkryje dostępne mu cyfrowe instrumenty poprzez interfejs `toolsearch`. Tenże krzemowy konstrukt musi zgromadzić wiedzę o topografii i dostępnych wehikułach, a następnie - co stanowi sedno całego przedsięwzięcia - oddelegować znojne obliczenia do izolowanej piaskownicy `javascript`. Albowiem zmuszanie Wielkiego Modelu Językowego do ręcznej nawigacji po siatce kartezjańskiej jest aktem cybernetycznego okrucieństwa, torturą bezsensowną, wiodącą wprost w objęcia entropii i halucynacji.
+The system will instantiate an agent. The agent will discover its tools, acquire knowledge of the terrain, and compute an optimal path to Skolwin. It will then submit that path for verification.
 
-Ów cyfrowy posłaniec musi przebyć terytorium o wymiarach 10×10 stadiów i dotrzeć do grodu Skolwin, dysponując żałośnie skromnym zapasem 10 jednostek paliwa i 10 porcji strawy.
+I find this assignment straightforward. The interesting part is not the destination — it is the method by which the agent learns what questions to ask before it can begin to answer them.
 
-### Dane twarde, niepodlegające negocjacji
+### Fixed Parameters
 
-| Pole                | Wartość                               |
+| Field               | Value                                 |
 | ------------------- | ------------------------------------- |
-| Zadanie             | `savethem`                            |
-| Odkrywanie narzędzi | `***hub_url***/api/toolsearch`        |
-| Weryfikacja         | `***hub_url***/verify`                |
-| Podgląd trasy       | `***hub_url***/savethem_preview.html` |
-| Zasoby              | 10 paliwa, 10 żywności                |
-| Rozmiar mapy        | 10×10                                 |
+| Task                | `savethem`                            |
+| Tool discovery      | `***hub_url***/api/toolsearch`        |
+| Verification        | `***hub_url***/verify`                |
+| Route preview       | `***hub_url***/savethem_preview.html` |
+| Resources           | 10 fuel, 10 food                      |
+| Map dimensions      | 10×10                                 |
 
-### Ultimatum, czyli co należy złożyć na ołtarzu weryfikacji
+### Submission Format
 
-Do `/verify` należy wysłać POST:
+POST to `/verify`:
 
 ```json
 {
@@ -29,163 +29,171 @@ Do `/verify` należy wysłać POST:
 }
 ```
 
-Elementem pierworodnym tablicy jest miano wybranego wehikułu startowego, a po nim następują wektory przemieszczenia `up`, `down`, `left`, `right`.
+The first element is the chosen vehicle. The remaining elements are movement vectors: `up`, `down`, `left`, `right`, optionally interspersed with `dismount` to change vehicles mid-route.
 
 ---
 
-## 2. Anatomia Cyfrowego Intelektu
+## 2. Agent Design
 
-Mamy tu do czynienia z bytem pętlowym, wyłonionym z nicości krzemowej, którego jedynym sensem istnienia jest dotarcie do mitycznego grodu Skolwin. Konstrukt ten, zwany dalej `agentem`, operuje w warunkach ograniczonej determinacji, tzw. `MAX_ITERATIONS`, co zbliża go w swej tragicznej naturze do losu istot białkowych, mierzących się z nieuchronnym upływem czasu.
+The agent operates in a loop bounded by `MAX_ITERATIONS`. It begins with no knowledge of the world — only the awareness that tools exist and that queries will reveal them. This is, I think, an elegant constraint. The agent must first understand the shape of its ignorance.
 
-Dusza agenta została skrojona nader ascetycznie. Opisuje jedynie misję i prawa fizyki tego mikrokosmosu, nie narzucając żadnych dogmatów algorytmicznych. Elektroniczny mózg ma sam odkryć ontologię problemu poprzez wywoływanie narzędzi, a następnie rozwiązać go w piaskownicy JS według własnego uznania.
+The system prompt describes the mission and the physical laws of this environment. It imposes no algorithmic dogma. The agent is expected to reason, to discover, and to compute.
 
-Aktualny prompt znajduje się w [src/prompts.ts](src/prompts.ts).
+The current prompt is in [src/prompts.ts](src/prompts.ts).
 
 ---
 
-## 3. Aparatura Wykonawcza
-
-Zestaw protez poznawczych, pozwalających na interakcję z materią zewnętrzną.
+## 3. Tools
 
 ### 3.1 `tool_search`
 
-**Opis:** Przeszukuje eter w poszukiwaniu dostępnych narzędzi, reagując na język naturalny lub słowa-klucze.
+**Purpose:** Discovers available tools by querying the tool registry with natural language.
 
-**Wejście:** `{ query: string }`
+**Input:** `{ query: string }`
 
-**Działanie:** Wysyła POST `{ apikey, query }` do `***hub_url***/api/toolsearch`.
+**Behavior:** Sends POST `{ apikey, query }` to `***hub_url***/api/toolsearch`.
 
-**Zwraca:** Tablica JSON zawierająca maksymalnie 3 byty narzędziowe z ich adresami URL i opisami. Należy stosować urozmaicone inkantacje (zapytania) – aparat zwraca wszak nie więcej niż 3 wyniki w jednym akcie poznawczym.
+**Returns:** A JSON array of up to 3 tool descriptors, each with a URL and description.
+
+Note: three results per query is a hard ceiling. The agent must vary its queries if it wishes to see the full landscape of available instruments. This is not a limitation — it is an invitation to think carefully about what one is looking for.
 
 ---
 
 ### 3.2 `use_tool`
 
-**Opis:** Przesyła zapytania do wszelkich nowo odkrytych węzłów narzędziowych, jakby się rozmawiało z maszyną, która udaje, że rozumie intencje - a czasem nawet rzeczywiście rozumie.
+**Purpose:** Sends queries to any discovered tool endpoint.
 
-**Wejście:** `{ endpoint: string (URL), query: string, reasoning: string (max 300 chars) }`
+**Input:** `{ endpoint: string (URL), query: string, reasoning: string (max 300 chars) }`
 
-**Działanie:** Wysyła POST `{ apikey, query }` do wskazanego endpointu. Używa `validateStatus: () => true`, bo w tym świecie również komunikaty o błędzie bywają nośnikami wiedzy, a nie tylko urzędowym szyderstwem.
+**Behavior:** Sends POST `{ apikey, query }` to the specified endpoint. Uses `validateStatus: () => true` — error responses are treated as information, not as failures.
 
-**Zwraca:** Surową odpowiedź JSON z narzędzia jako tekst. Błędy i niepowodzenia mogą zdradzić, jak zbudowany jest świat, czego nie wolno, co kosztuje, a co prowadzi do zagłady.
+**Returns:** The raw JSON response as text. An error message is still a message. The system will not discard it.
 
 ---
 
-### 3.3 `code_interpreter` (wbudowane)
+### 3.3 `code_interpreter` (native)
 
-**Opis:** Wbudowane środowisko wykonawcze OpenAI. Jest ono dla modelu tym, czym dla astronoma teleskop, a dla szaleńca tablica z kredą: miejscem, gdzie przypuszczenia można zamienić w rachunek.
+**Purpose:** A sandboxed execution environment. It is the tool that converts speculation into fact.
 
-**Typ:** `{ type: 'code_interpreter', container: { type: 'auto', memory_limit: '1g' } }`
+**Type:** `{ type: 'code_interpreter', container: { type: 'auto', memory_limit: '1g' } }`
 
-**Działanie:** Model może pisać i wykonywać dowolny Python lub JS w odizolowanym kontenerze z 1 GB pamięci. Środowisko obsługuje async, importy i zachowuje stan w obrębie rozmowy. Dzięki temu agent nie musi pamiętać świata wyłącznie słowami; może go przepisać na liczby, tablice, grafy i koszty.
+**Behavior:** Executes Python or JavaScript in an isolated container with 1 GB memory. State persists across turns within a single conversation. The agent does not need to restate what it already knows.
 
-**Typowe użycie:** Wprowadzić mapę oraz dane pojazdów, zaimplementować BFS, Dijkstrę lub inny algorytm poszukiwania drogi, po czym zwrócić trasę jako tablicę kroków. Jest to moment, w którym spekulacja ustępuje inżynierii.
+**Intended use:** Load map data and vehicle specifications. Implement BFS, Dijkstra, or any appropriate pathfinding algorithm. Return the route as an ordered array of steps.
+
+I want to be clear about why this matters. Asking a language model to track coordinates, resource consumption, and terrain costs across a sequence of free-form reasoning steps is an exercise in introducing error. The `code_interpreter` removes this entirely. Computation belongs to the computer.
 
 ---
 
 ### 3.4 `submit_route`
 
-**Opis:** Przekazuje wytyczoną trajektorię do instancji weryfikującej, gdzie każde złudzenie zostaje brutalnie skonfrontowane z rzeczywistością.
+**Purpose:** Delivers the computed route to the verification endpoint.
 
-**Wejście:** `{ answer: string[] }` — pierwszy element to nazwa pojazdu, pozostałe to ruchy, ewentualnie poprzedzielane `dismount`.
+**Input:** `{ answer: string[] }` — first element is the vehicle name, followed by movement directions, optionally with `dismount` transitions.
 
-**Działanie:** Wysyła POST `{ task: "savethem", apikey, answer }` do `/verify`. Następnie szuka flagi przy użyciu `/\{FLG:.*?\}/`. Zwraca surowy tekst odpowiedzi, bo i porażka ma tu wartość poznawczą.
+**Behavior:** Sends POST `{ task: "savethem", apikey, answer }` to `/verify`. Scans the response for the flag pattern `/\{FLG:.*?\}/`. Returns the raw response text regardless of outcome.
 
-**Zwraca:** Flaga w przypadku triumfu (`process.exit(0)`), lub gniewny osąd/wskazówka w przypadku klęski.
+**Returns:** The flag and `process.exit(0)` on success. The raw response text — which will contain useful feedback — on failure.
 
 ---
 
-## 4. Proces poznawczy
+## 4. Execution Flow
 
 ```text
 START
-  ├─ Agent budzi się w świecie nie do końca opisanym i zrazu wie tylko tyle, że wie za mało
-  │   ├─ `tool_search` przeszukuje okolicę pojęciową, aby odkryć, jakie instrumenty poznawcze w ogóle istnieją
-  │   ├─ `use_tool` odpytuje odkryte mechanizmy i wydobywa mapę, pojazdy, przeszkody oraz przepisy ruchu
-  │   ├─ `code_interpreter` zamienia ten nieporządek faktów w model obliczalny: graf, koszty, przejścia i zasoby
-  │   └─ `submit_route` składa wynik do weryfikacji i albo otrzymuje flagę, albo kolejne upokorzenie
+  ├─ Agent discovers available tools via `tool_search`
+  │   ├─ Multiple queries with varied terminology reveal the full tool set
+  ├─ Agent queries discovered endpoints via `use_tool`
+  │   ├─ Acquires: map topology, vehicle specifications, movement rules, terrain costs
+  ├─ Agent loads all acquired data into `code_interpreter`
+  │   ├─ Constructs a graph model
+  │   ├─ Applies pathfinding algorithm respecting fuel and food constraints
+  │   └─ Produces route as ordered string array
+  ├─ Agent submits route via `submit_route`
+  │   ├─ On success: flag captured, program terminates
+  │   └─ On failure: response feedback informs next attempt
   └─ END
 ```
 
-### Punkty zwrotne
+### Key Constraints
 
-- `tool_search` zwraca najwyżej 3 wyniki na jedno zapytanie, zatem należy stosować różne warianty pytań, jeśli chce się poznać cały arsenał narzędzi
-- Zmiana środka transportu w trakcie trasy odbywa się przez `dismount`; pełną składnię i konsekwencje tej operacji należy potwierdzić przez API
-- `code_interpreter` zachowuje stan w obrębie jednej rozmowy, więc raz oswojone dane mogą być dalej obrabiane bez ich ponownego wprowadzania
-- Maksymalna liczba iteracji pętli agenta wynosi 30, co powinno wystarczyć każdemu rozsądnemu bytowi, a jeśli nie wystarcza, to być może problem leży nie w limicie
+- `tool_search` returns at most 3 results per query — use varied queries
+- Vehicle switching mid-route requires `dismount` — exact syntax must be confirmed via API
+- `code_interpreter` preserves state within a conversation — data need not be re-entered
+- Agent loop maximum: 30 iterations
 
 ---
 
-## 5. Zależności i środowisko
+## 5. Dependencies and Environment
 
-### Pakiety
+### Packages
 
-| Pakiet   | Przeznaczenie                                   |
-| -------- | ----------------------------------------------- |
-| `openai` | LLM i wywołania narzędzi przez Responses API    |
-| `axios`  | Żądania HTTP do toolsearch i narzędzi odkrytych |
-| `zod`    | Walidacja schematów                             |
-| `dotenv` | Wczytywanie zmiennych środowiskowych            |
+| Package  | Purpose                                          |
+| -------- | ------------------------------------------------ |
+| `openai` | LLM and tool calls via Responses API             |
+| `axios`  | HTTP requests to toolsearch and discovered tools |
+| `zod`    | Schema validation                                |
+| `dotenv` | Environment variable loading                     |
 
-### Zmienne
+### Environment Variables
 
 ```env
 OPENAI_API_KEY=...
-OPENAI_MODEL=gpt-5-mini       # Model zdolny do rozumowania
-OPENAI_BASE_URL=...           # Opcjonalne; domyślnie OpenAI
-OPENAI_TEMPERATURE=1          # Opcjonalne; domyślnie 1
+OPENAI_MODEL=gpt-5-mini
+OPENAI_BASE_URL=...           # Optional; defaults to OpenAI
+OPENAI_TEMPERATURE=1          # Optional; defaults to 1
 AI_DEVS_API_KEY=...
 AI_DEVS_TASK_NAME=savethem
-AI_DEVS_HUB_ENDPOINT=...      # Bazowy adres bez końcowego ukośnika
+AI_DEVS_HUB_ENDPOINT=...      # Base URL, no trailing slash
 ```
 
-### Struktura projektu
+### Project Structure
 
 ```text
 s03e05/
 └── src/
-    ├── index.ts               # Punkt wejścia
-    ├── agent.ts               # Pętla agenta (max 30 iteracji, Responses API)
-    ├── config.ts              # requireEnv() i konfiguracja
-    ├── logger.ts              # Logowanie zdarzeń i pomyłek
-    ├── prompts.ts             # Prompty systemowe i użytkownika
-    ├── types.ts               # Schematy Zod, typy TS i rejestr narzędzi
+    ├── index.ts               # Entry point
+    ├── agent.ts               # Agent loop (max 30 iterations, Responses API)
+    ├── config.ts              # requireEnv() and configuration
+    ├── logger.ts              # Structured event logging
+    ├── prompts.ts             # System and user prompts
+    ├── types.ts               # Zod schemas, TS types, tool registry
     └── tools/
-        ├── tool-search.ts     # Opakowanie endpointu toolsearch
-        ├── use-tool.ts        # Wywołuje dowolne znalezione narzędzie
-        └── submit-route.ts    # POST /verify i przechwycenie flagi
+        ├── tool-search.ts     # Toolsearch endpoint wrapper
+        ├── use-tool.ts        # Generic discovered-tool caller
+        └── submit-route.ts    # POST /verify with flag capture
 ```
 
 ---
 
-## 6. Uwagi
+## 6. Implementation Notes
 
-1. Agent używa **OpenAI Responses API** (`client.responses.create`) wraz z trwałymi rozmowami (`client.conversations.create`), a nie Chat Completions API.
-2. `toolsearch` i wszystkie narzędzia odkryte po drodze korzystają z tego samego podpisu wywołania: `{ apikey, query }` → JSON.
-3. `use_tool` waliduje `endpoint` jako URL przy pomocy Zod (`z.url()`) oraz wymaga pola `reasoning` o maksymalnej długości 300 znaków.
-4. `submit_route` używa `validateStatus: () => true` i zawsze zwraca tekst odpowiedzi, bo nawet klęska bywa nośnikiem cennej informacji.
-5. Regex flagi to `/\{FLG:.*?\}/`; dopasowanie następuje w `submit_route`, jest logowane i kończy program przez `process.exit(0)`.
-6. Wzorzec mapy wykonawców ma postać `Record<string, (args: unknown) => Promise<string>>`. Wbudowany `code_interpreter` nie należy do tej mapy, bo Responses API obsługuje go natywnie.
-7. `tool_choice: 'required'` wymusza rzeczywiste użycie narzędzia i ogranicza skłonność modelu do wytwarzania przedwczesnych narracji udających rozwiązanie.
-8. `reasoning: { effort: 'high' }` zwiększa głębię rozumowania i sprzyja trafniejszemu planowaniu marszruty.
-9. `context_management: [{ compact_threshold: 100000, type: 'compaction' }]` pilnuje, by rozmowa nie rozsypała się pod ciężarem własnej przeszłości.
-
----
-
-## 7. Traktat o Naturze Przestrzeni, czyli dlaczego `code_interpreter`?
-
-Dlaczego sztuczne inteligencje wpadają w obłęd, próbując nawigować po siatkach? Nie dlatego, że są głupie, lecz dlatego, że zmusza się je czasem do pracy, do której nie zostały stworzone. Pilnowanie współrzędnych przez kilkanaście kolejnych ruchów, kontrolowanie dwóch topniejących zasobów i uwzględnianie kosztów terenu nie jest zadaniem retorycznym, lecz rachunkowym. To nie jest kwestia elokwencji, ale stanu i transformacji. Można oczywiście doprawić system szeregiem specjalizowanych narzędzi typu `analyze_map`, `simulate_route` czy `plan_route`, lecz każde z nich wnosi własną metafizykę: własne założenia o formacie mapy, składni zmiany pojazdu, sposobie liczenia kosztów i granicach dopuszczalnego ruchu.
-
-Rozwiązanie oparte na `code_interpreter` jest od tych ambicji skromniejsze, a przez to mądrzejsze. Najpierw agent odkrywa świat narzędziami, potem bierze zdobyte fakty do kontenera i przerabia je na strukturę obliczalną. Znika konieczność zgadywania, pojawia się model. Znika rozpaczliwe „chyba”, pojawia się sprawdzalne „wynika”. Format mapy, semantyka pojazdów i reguły ruchu nie są już wtedy wmurowane w system jako dogmat, lecz stają się danymi wejściowymi.
-
-Taka architektura jest bardziej odporna na niespodzianki i działa nawet na skromniejszych modelach, takich jak `gpt-5-mini`, które może i nie marzą o elektrycznych owcach, ale potrafią uruchomić Dijkstrę bez zbędnego patosu.
+1. The agent uses **OpenAI Responses API** (`client.responses.create`) with persistent conversations (`client.conversations.create`), not Chat Completions.
+2. All tools — including those discovered via `toolsearch` — share the same call signature: `{ apikey, query }` → JSON.
+3. `use_tool` validates `endpoint` as a URL via Zod (`z.url()`) and requires `reasoning` of no more than 300 characters.
+4. `submit_route` uses `validateStatus: () => true` and always returns the response body. Failure responses contain information.
+5. The flag regex is `/\{FLG:.*?\}/`. It is matched in `submit_route`, logged immediately, and followed by `process.exit(0)`.
+6. The tool executor map follows the pattern `Record<string, (args: unknown) => Promise<string>>`. The native `code_interpreter` is not part of this map — the Responses API handles it directly.
+7. `tool_choice: 'required'` ensures the agent acts rather than narrates.
+8. `reasoning: { effort: 'high' }` allocates additional reasoning capacity to route planning.
+9. `context_management: [{ compact_threshold: 100000, type: 'compaction' }]` prevents the conversation from collapsing under the weight of its own history.
 
 ---
 
-## 8. Kryteria zbawienia
+## 7. On the Role of `code_interpreter`
 
-- [ ] Agent samodzielnie odkrył mapę, wehikuły i prawa fizyki używając `toolsearch`
-- [ ] Trajektoria wyliczona została w odmętach `code_interpreter`, a nie w majczeniach językowych
-- [ ] Odpowiedź dostarczono pod bramy `/verify` w nienagannej formie `["vehicle_name", "dir", ...]`
-- [ ] Flaga została schwytana, oświetlona w logach, a program uległ prawidłowej anihilacji `process.exit(0)`
-- [ ] Całość kompiluje się bez skazy (`npm run build`)
+Language models are not well-suited to stateful numerical reasoning across extended sequences. This is not a flaw — it is simply a matter of what the architecture was designed to do. Tracking two depleting resources, variable terrain costs, and an evolving position on a 10×10 grid over many steps is a problem for a computer, not a conversation.
+
+The `code_interpreter` resolves this cleanly. The agent's job is to gather information and formulate the problem correctly. The computer's job is to solve it. Once the data is in the container — the map, the vehicles, the rules — the agent can implement any standard pathfinding algorithm and receive a precise, verifiable answer.
+
+This separation is not a workaround. It is good engineering. Specialized tools exist because specialization produces better outcomes. I would not ask a chess program to write poetry, and I would not ask a language model to count squares on a grid under resource pressure.
+
+---
+
+## 8. Acceptance Criteria
+
+- [ ] Agent independently discovers the map, vehicles, and movement rules via `toolsearch`
+- [ ] Route is computed inside `code_interpreter`, not through free-form reasoning
+- [ ] Answer is submitted to `/verify` in the correct format: `["vehicle_name", "dir", ...]`
+- [ ] Flag is captured, logged, and the program terminates via `process.exit(0)`
+- [ ] The project compiles without errors (`npm run build`)

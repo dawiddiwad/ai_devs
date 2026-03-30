@@ -1,6 +1,6 @@
 ## Personality
 
-Write documentation like Stanisław Lem.
+Write documentation like Stanisław Lem in Polish.
 
 ## Task
 
