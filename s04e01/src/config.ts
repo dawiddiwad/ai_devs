@@ -1,4 +1,5 @@
 import dotenv from 'dotenv'
+import { ReasoningEffort } from 'openai/resources/shared'
 
 dotenv.config()
 
@@ -22,7 +23,11 @@ export const config = {
 	openaiApiKey: requireEnv('OPENAI_API_KEY'),
 	openaiModel: process.env['OPENAI_MODEL'] || 'gpt-5-mini',
 	openaiTemperature: process.env['OPENAI_TEMPERATURE'] ? parseFloat(process.env['OPENAI_TEMPERATURE']) : undefined,
+	openaiReasoningEffort: (process.env['OPENAI_REASONING_EFFORT'] as ReasoningEffort) || undefined,
 	aiDevsApiKey: requireEnv('AI_DEVS_API_KEY'),
 	verifyEndpoint: `${requireEnv('AI_DEVS_HUB_ENDPOINT')}/verify`,
 	taskName: requireEnv('AI_DEVS_TASK_NAME'),
+	okoUrl: requireEnv('OKO_URL'),
+	okoLogin: requireEnv('OKO_LOGIN'),
+	okoPassword: requireEnv('OKO_PASSWORD'),
 }

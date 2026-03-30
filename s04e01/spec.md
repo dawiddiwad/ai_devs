@@ -1,29 +1,29 @@
 # Agent `okoeditor`
 
-## 1. Overview & Goal
+## 1. Cel i zakres operacji
 
-### Task Summary
+### Streszczenie zadania
 
-Agent edits records in the OKO operational monitoring system to erase evidence of a resistance mission near Skolwin. It browses the OKO API (read-only) to discover data IDs, then uses the Centrala `/verify` API as the sole write path to execute four mutations.
+Oto bowiem sytuacja: istnieje system o nazwie OKO — Operacyjne Centrum Kontroli — będący niczym innym jak okiem Państwa, skierowanym na wszystkie anomalie rzeczywistości. W rejestrach owego oka odnotowano zdarzenia, których tam być nie powinno. Agent zostaje wysłany, aby owe wpisy poprawić — nie niszcząc, lecz przekształcając; nie wymazując, lecz zastępując prawdą wygodniejszą. Przeglądanie OKO odbywa się w trybie czysto poznawczym (tylko odczyt), zaś wszelkie zapisy wędrują wyłącznie przez Centralę, punkt weryfikacyjny systemu, któremu ufamy, gdyż nie mamy innego wyjścia.
 
-### Hardcoded Inputs / Initial Data
+### Dane wejściowe
 
-| Field | Value |
-| ----- | ----- |
-| OKO URL | `config.okoUrl` (from env) |
-| OKO credentials | `config.okoLogin` / `config.okoPassword` (from env) |
-| Centrala verify URL | `config.verifyEndpoint` |
-| Task name | `okoeditor` |
+| Pole                       | Wartość                                                                |
+| -------------------------- | ---------------------------------------------------------------------- |
+| Adres OKO                  | `config.okoUrl` (ze zmiennych środowiskowych)                          |
+| Dane uwierzytelniające OKO | `config.okoLogin` / `config.okoPassword` (ze zmiennych środowiskowych) |
+| Endpoint Centrali          | `config.verifyEndpoint`                                                |
+| Nazwa zadania              | `okoeditor`                                                            |
 
-### Final Deliverable
+### Produkt końcowy
 
-Flag matching `/\{FLG:.*?\}/` extracted from Centrala `done` response. Logged and `process.exit(0)`.
+Flaga w formacie `/\{FLG:.*?\}/`, wydobyta z odpowiedzi Centrali na akcję `done`. Zalogowana, po czym `process.exit(0)` — albowiem po schwytaniu flagi nie ma już nic do roboty.
 
 ---
 
-## 2. Agent Persona & Prompt Strategy
+## 2. Persona agenta i strategia promptu
 
-Credentials are injected at runtime from `config` — never hardcoded in source.
+Dane uwierzytelniające wstrzykiwane są w czasie wykonania z obiektu `config` — nigdy nie pojawiają się w kodzie źródłowym, bo kod źródłowy jest dokumentem publicznym, a tajemnica — prywatną własnością.
 
 ### System Prompt
 
@@ -31,25 +31,30 @@ Credentials are injected at runtime from `config` — never hardcoded in source.
 You are a covert data editor for the resistance.
 
 ## Mission
+
 Complete exactly four tasks to alter OKO monitoring records:
+
 1. Change Skolwin city report classification: vehicles/people → animals
 2. Find the Skolwin task → mark it done, note animals (e.g. beavers) observed
 3. Create new incident: human movement detected near city Komarowo
 4. Call action "done" via Centrala when finished
 
 ## Systems
+
 - OKO API (${config.okoUrl}) — browse to find report/task IDs.
   Login: ${config.okoLogin} / ${config.okoPassword}
 - Centrala /verify — the ONLY write path. Use the `centrala` tool.
 - Do NOT use `http_request` for writes. Do NOT use `centrala` for OKO browsing.
 
 ## Workflow
+
 1. Call `centrala` with action "help" to discover all available actions and parameters
 2. Use `http_request` to login to OKO and browse for relevant IDs
 3. Execute the four mutations via `centrala` in order
 4. When `centrala` returns a flag, mission is complete
 
 ## Rules
+
 - Discover before you act — call help first
 - Read error responses from centrala carefully and retry with corrected params
 - Do not fabricate IDs — get them from OKO
@@ -59,64 +64,66 @@ User prompt: `"Execute all four missions in sequence."`
 
 ---
 
-## 3. Tool Definitions
+## 3. Narzędzia
 
 ### 3.1 `http_request`
 
-**Description:** HTTP tool for OKO API interaction only. Manages session cookies via internal cookie jar. Do NOT use for Centrala writes.
+**Opis:** Narzędzie do komunikacji z API OKO. Przechowuje ciasteczka sesji w wewnętrznym słoiku (cookie jar), niewidocznym dla agenta — ów słoik jest duszą sesji, cierpliwie zbierającą tożsamość przez kolejne żądania.
 
 **Input Schema:**
 
 ```json
 {
-  "type": "object",
-  "properties": {
-    "url": { "type": "string", "description": "Full URL" },
-    "method": { "type": "string", "enum": ["GET", "POST"], "description": "HTTP method" },
-    "body": { "type": "object", "description": "JSON body for POST" },
-    "headers": { "type": "object", "description": "Extra request headers" },
-    "bodyEncoding": { "type": "string", "enum": ["json", "form"], "description": "Body encoding, default json" }
-  },
-  "required": ["url", "method"]
+	"type": "object",
+	"properties": {
+		"url": { "type": "string", "description": "Full URL" },
+		"method": { "type": "string", "enum": ["GET", "POST"], "description": "HTTP method" },
+		"body": { "type": "object", "description": "JSON body for POST" },
+		"headers": { "type": "object", "description": "Extra request headers" },
+		"bodyEncoding": { "type": "string", "enum": ["json", "form"], "description": "Body encoding, default json" }
+	},
+	"required": ["url", "method"]
 }
 ```
 
-**Behavior:**
-- Module-level singleton `CookieJar` + wrapped axios client (`axios-cookiejar-support` + `tough-cookie`)
-- `validateStatus: () => true` — never throws
+**Działanie:**
+
+- Singleton `CookieJar` + klient axios opakowany przez `axios-cookiejar-support` i `tough-cookie` — tworzony raz na cały czas życia procesu
+- `validateStatus: () => true` — błędy HTTP nie są wyjątkami, lecz informacjami
 - `bodyEncoding: "form"` → `URLSearchParams` + `Content-Type: application/x-www-form-urlencoded`
 
-**Returns:** `JSON.stringify({ status, body })` — body is parsed JSON or raw string
+**Returns:** `JSON.stringify({ status, body })` — body jako sparsowany JSON lub surowy łańcuch znaków
 
 ---
 
 ### 3.2 `centrala`
 
-**Description:** Submits an action to the Centrala `/verify` endpoint. Wraps the standard payload format automatically. Use for all Centrala interactions: `help`, mutations, `done`.
+**Opis:** Wysyła akcję do endpointu `/verify` Centrali, opakowując ładunek w standardowy format protokołu. Przy każdej odpowiedzi sprawdza obecność flagi — bez wiedzy agenta, w sposób czysto mechaniczny, jak stróż czytający każdy list.
 
 **Input Schema:**
 
 ```json
 {
-  "type": "object",
-  "properties": {
-    "action": { "type": "string", "description": "Action name (e.g. help, done, edit_report)" },
-    "params": { "type": "object", "description": "Additional action parameters merged into answer" }
-  },
-  "required": ["action"]
+	"type": "object",
+	"properties": {
+		"action": { "type": "string", "description": "Action name (e.g. help, done, edit_report)" },
+		"params": { "type": "object", "description": "Additional action parameters merged into answer" }
+	},
+	"required": ["action"]
 }
 ```
 
-**Behavior:**
-- Constructs: `{ apikey: config.aiDevsApiKey, task: config.taskName, answer: { action, ...params } }`
-- POSTs to `config.verifyEndpoint` with `validateStatus: () => true`
-- Checks raw response text for `/\{FLG:.*?\}/` → logs flag + `process.exit(0)` if matched
+**Działanie:**
+
+- Konstruuje ładunek: `{ apikey: config.aiDevsApiKey, task: config.taskName, answer: { action, ...params } }`
+- POST do `config.verifyEndpoint` z `validateStatus: () => true`
+- Sprawdza surowy tekst odpowiedzi wyrażeniem `/\{FLG:.*?\}/` — jeśli dopasowanie: loguje flagę, wywołuje `process.exit(0)`
 
 **Returns:** `JSON.stringify({ status, body })`
 
 ---
 
-## 4. Execution Flow
+## 4. Przebieg wykonania
 
 ```
 START
@@ -131,28 +138,27 @@ START
   ├─[GOAL 2] centrala({ action: discovered, ...Skolwin task done + beavers })
   ├─[GOAL 3] centrala({ action: discovered, ...Komarowo human movement incident })
   ├─[GOAL 4] centrala({ action: "done" })
-  │     → flag regex check inside centrala tool
+  │     → centrala tool checks raw response for /\{FLG:.*?\}/
   └─ FLAG CAPTURED → logger.agent('info', flag) → process.exit(0)
 ```
 
-### Key Decision Points
+### Kluczowe punkty decyzyjne
 
-- If Centrala returns an error body, agent reads it and retries with corrected params
-- If OKO login requires form encoding, use `bodyEncoding: "form"`
-- Agent decides when all four goals are complete, then calls `done`
-- `strict: false` on both tool definitions — `body`/`headers`/`params` are open objects
+- Centrala zwraca błąd → agent czyta ciało odpowiedzi, koryguje parametry, ponawia
+- Logowanie OKO wymaga form-encoding → `bodyEncoding: "form"`
+- `strict: false` na obu definicjach narzędzi — pola `body`, `headers`, `params` są otwartymi obiektami
 
 ---
 
-## 5. Dependencies & Environment
+## 5. Zależności i środowisko
 
-### package.json additions
+### Nowe pakiety
 
-| Package | Purpose |
-| ------- | ------- |
-| `axios-cookiejar-support` | Cookie jar integration for axios |
-| `tough-cookie` | Cookie jar implementation |
-| `@types/tough-cookie` (dev) | TypeScript types |
+| Pakiet                      | Cel                           |
+| --------------------------- | ----------------------------- |
+| `axios-cookiejar-support`   | Integracja cookie jar z axios |
+| `tough-cookie`              | Implementacja cookie jar      |
+| `@types/tough-cookie` (dev) | Typy TypeScript               |
 
 ### Environment Variables
 
@@ -173,7 +179,7 @@ OKO_PASSWORD=
 src/
   index.ts           — entry point, calls runAgent()
   agent.ts           — Conversations + Responses API loop, MAX_ITERATIONS=30
-  config.ts          — extend existing with okoUrl, okoLogin, okoPassword
+  config.ts          — extend with okoUrl, okoLogin, okoPassword
   logger.ts          — unchanged
   prompts.ts         — SYSTEM_PROMPT with runtime config injection
   types.ts           — boundTools registry
@@ -185,23 +191,23 @@ src/
 
 ---
 
-## 6. Key Implementation Notes
+## 6. Uwagi implementacyjne
 
-1. **Cookie jar** — module-level singleton in `httpRequest.ts`. Not per-call.
-2. **Agent loop** — Conversations API (`client.conversations.create`) + `client.responses.create`. Use `tool_choice: 'auto'`.
-3. **Config** — extend existing `config.ts` with `okoUrl`, `okoLogin`, `okoPassword` via `requireEnv()`.
-4. **tool-factory.ts** — use `defineTool` pattern from `.claude/rules/openai-sdk.md`.
-5. **Flag capture** — in `centrala.ts` only, per flag-capture rule. Regex on raw response text before JSON parse.
-6. **MAX_ITERATIONS: 30** — sufficient for ~10 expected steps.
+1. **Cookie jar** — singleton na poziomie modułu w `httpRequest.ts`. Nie tworzyć per wywołanie.
+2. **Pętla agenta** — `client.conversations.create` + `client.responses.create`. Pole `reasoning` pominąć (gpt nie jest modelem o-series). `tool_choice: 'auto'`.
+3. **Config** — rozszerzyć istniejący `config.ts` o `okoUrl`, `okoLogin`, `okoPassword` przez `requireEnv()`.
+4. **tool-factory.ts** — wzorzec `defineTool` z `.claude/rules/openai-sdk.md`.
+5. **Flag capture** — wyłącznie w `centrala.ts`, zgodnie z regułą flag-capture. Regex na surowym tekście przed parsowaniem JSON.
+6. **MAX_ITERATIONS: 30** — wystarczające dla ~10 przewidywanych kroków.
 
 ---
 
-## 7. Acceptance Criteria
+## 7. Kryteria akceptacji
 
-- [ ] `npm run dev` completes without manual intervention
-- [ ] Agent calls `action: "help"` before any writes
-- [ ] All writes go through `centrala` tool, never `http_request`
-- [ ] All four Centrala mutations succeed
-- [ ] Flag captured via regex → logged → `process.exit(0)`
-- [ ] No credentials in source files
-- [ ] `npm run compile:check` passes
+- [ ] `npm run dev` kończy działanie bez interwencji człowieka
+- [ ] Agent wywołuje `action: "help"` przed pierwszym zapisem
+- [ ] Wszystkie zapisy przechodzą przez narzędzie `centrala`, nigdy `http_request`
+- [ ] Cztery mutacje zakończone sukcesem
+- [ ] Flaga schwytana przez regex → zalogowana → `process.exit(0)`
+- [ ] Żadnych danych uwierzytelniających w kodzie źródłowym
+- [ ] `npm run compile:check` zaliczony
