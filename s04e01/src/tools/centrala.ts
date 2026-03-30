@@ -6,26 +6,27 @@ import { defineTool } from '../tool-factory'
 
 const FLAG_REGEX = /\{FLG:.*?\}/
 
-const schema = z.object({
-	action: z.string().describe('Action name (e.g. help, done, edit_report)'),
-	params: z.record(z.string(), z.unknown()).optional().describe('Additional action parameters merged into answer'),
-})
+const schema = z
+	.object({
+		action: z.string().describe('API action to perform (use help to discover available actions)'),
+	})
+	.catchall(z.unknown())
 
 export const centralaTool = defineTool({
 	name: 'centrala',
 	description:
-		'Submit an action to the Centrala /verify endpoint. Use for ALL Centrala interactions: help, data mutations, and done. Automatically wraps the payload in the standard format.',
+		'Submit an action to the Centrala /verify endpoint. All key-value pairs you pass become fields inside the answer object. Use action=help first to discover the API. Pass all required fields as top-level keys.',
 	schema,
 	strict: false,
-	handler: async ({ action, params }) => {
+	handler: async (params) => {
 		const payload = {
 			apikey: config.aiDevsApiKey,
 			task: config.taskName,
-			answer: { action, ...params },
+			answer: params,
 		}
 
-		logger.tool('info', `Centrala action: ${action}`)
-		logger.api('info', 'POST', { endpoint: config.verifyEndpoint, action })
+		logger.tool('info', `Centrala action: ${params.action}`, { payload: JSON.stringify(payload, null, 2) })
+		logger.api('info', 'POST', { endpoint: config.verifyEndpoint, action: params.action })
 
 		const response = await axios.post(config.verifyEndpoint, payload, {
 			validateStatus: () => true,
@@ -39,7 +40,7 @@ export const centralaTool = defineTool({
 			process.exit(0)
 		}
 
-		logger.api('info', `Response ${response.status} length: ${responseText.length}`, { action })
+		logger.api('info', `Response ${response.status} length: ${responseText.length}`, { responseText })
 		return JSON.stringify({ status: response.status, body: response.data })
 	},
 })

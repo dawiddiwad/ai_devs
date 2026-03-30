@@ -109,7 +109,6 @@ const conversation = await client.conversations.create({
 
 let inputMessages: ResponseInput = []
 for (let i = 0; i < MAX_ITERATIONS; i++) {
-	inputMessages = []
 	const response = await client.responses.create({
 		model: config.openaiModel,
 		conversation: conversation.id,
@@ -120,7 +119,7 @@ for (let i = 0; i < MAX_ITERATIONS; i++) {
 		reasoning: { effort: config.openaiReasoningEffort },
 		context_management: [{ type: 'compaction', compact_threshold: 100000 }],
 	})
-
+	inputMessages = []
 	for (const item of response.output) {
 		if (item.type === 'message') {
 			logger.agent('info', 'Agent message', { content: item.content })

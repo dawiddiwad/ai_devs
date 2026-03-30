@@ -1,17 +1,19 @@
 import OpenAI from 'openai'
-import type { ResponseInput } from 'openai/resources/responses/responses'
+import type { ResponseInput, Tool } from 'openai/resources/responses/responses'
 import { config } from './config'
 import { logger } from './logger'
 import { SYSTEM_PROMPT, USER_PROMPT } from './prompts'
-import { boundTools, toolDefinitions } from './types'
+import { staticBoundTools } from './types'
 
-const MAX_ITERATIONS = 30
+const MAX_ITERATIONS = 20
 
 export async function runAgent(): Promise<void> {
 	const client = new OpenAI({
 		apiKey: config.openaiApiKey,
 		baseURL: config.openaiBaseUrl,
 	})
+
+	const toolDefinitions = staticBoundTools.map((t) => t.definition) satisfies Tool[]
 
 	const conversation = await client.conversations.create({
 		items: [
@@ -23,16 +25,18 @@ export async function runAgent(): Promise<void> {
 	let inputMessages: ResponseInput = []
 	for (let i = 0; i < MAX_ITERATIONS; i++) {
 		logger.agent('info', `Iteration ${i + 1}/${MAX_ITERATIONS}`)
+
 		const response = await client.responses.create({
-			model: config.openaiModel,
+			model: config.orchestratorModel,
 			conversation: conversation.id,
 			tools: toolDefinitions,
-			tool_choice: 'required',
+			tool_choice: 'auto',
 			temperature: config.openaiTemperature,
 			input: inputMessages,
 			reasoning: {
 				effort: config.openaiReasoningEffort,
 			},
+			context_management: [{ compact_threshold: 50000, type: 'compaction' }],
 		})
 
 		inputMessages = []
@@ -43,11 +47,10 @@ export async function runAgent(): Promise<void> {
 			if (item.type === 'function_call') {
 				logger.agent('info', `Tool call: ${item.name}`)
 				try {
-					const tool = boundTools.find((t) => t.definition.name === item.name)
-					if (!tool) {
-						throw new Error(`No tool found with name: ${item.name}`)
-					}
-					const result = await tool.execute(JSON.parse(item.arguments))
+					const tool = staticBoundTools.find((t) => t.definition.name === item.name)
+					const result = tool
+						? await tool.execute(JSON.parse(item.arguments))
+						: JSON.stringify({ error: `Unknown tool: ${item.name}` })
 					inputMessages.push({ type: 'function_call_output', call_id: item.call_id, output: result })
 				} catch (error) {
 					inputMessages.push({

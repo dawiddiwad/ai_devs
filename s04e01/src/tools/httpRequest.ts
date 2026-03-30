@@ -1,12 +1,7 @@
 import { z } from 'zod/v4'
 import axios from 'axios'
-import { wrapper } from 'axios-cookiejar-support'
-import { CookieJar } from 'tough-cookie'
 import { logger } from '../logger'
 import { defineTool } from '../tool-factory'
-
-const jar = new CookieJar()
-const client = wrapper(axios.create({ jar, withCredentials: true }))
 
 const schema = z.object({
 	url: z.string().describe('Full URL'),
@@ -19,7 +14,7 @@ const schema = z.object({
 export const httpRequestTool = defineTool({
 	name: 'http_request',
 	description:
-		'Make HTTP requests to the OKO API. Manages session cookies automatically via internal cookie jar. Use for OKO browsing only — not for Centrala writes.',
+		'Make raw HTTP requests for non-HTML content only (JSON APIs, plain text endpoints). Do NOT use for web pages or portals — use browser tools instead.',
 	schema,
 	strict: false,
 	handler: async ({ url, method, body, headers: extraHeaders, bodyEncoding }) => {
@@ -37,7 +32,7 @@ export const httpRequestTool = defineTool({
 			}
 		}
 
-		const response = await client.request({
+		const response = await axios.request({
 			url,
 			method,
 			data: requestData,

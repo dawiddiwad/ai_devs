@@ -17,6 +17,8 @@
 		"format:fix": "prettier . --write"
 	},
 	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.15.0",
+		"@playwright/mcp": "^0.0.68",
 		"axios": "^1.13.6",
 		"axios-cookiejar-support": "^4.0.0",
 		"dotenv": "^17.3.1",

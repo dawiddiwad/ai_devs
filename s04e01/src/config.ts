@@ -22,6 +22,8 @@ export const config = {
 	openaiBaseUrl: process.env['OPENAI_BASE_URL'] || undefined,
 	openaiApiKey: requireEnv('OPENAI_API_KEY'),
 	openaiModel: process.env['OPENAI_MODEL'] || 'gpt-5-mini',
+	orchestratorModel: process.env['ORCHESTRATOR_MODEL'] || 'gpt-5.4',
+	subagentModel: process.env['SUBAGENT_MODEL'] || 'gpt-5.4-nano',
 	openaiTemperature: process.env['OPENAI_TEMPERATURE'] ? parseFloat(process.env['OPENAI_TEMPERATURE']) : undefined,
 	openaiReasoningEffort: (process.env['OPENAI_REASONING_EFFORT'] as ReasoningEffort) || undefined,
 	aiDevsApiKey: requireEnv('AI_DEVS_API_KEY'),
