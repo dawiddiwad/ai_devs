@@ -1,4 +1,7 @@
 import { z } from 'zod/v4'
+import { callApiTool } from './tools/call-api'
+
+export const agentTools = [callApiTool]
 
 export const ConfigPointSchema = z.object({
 	datetime: z.string(),
@@ -8,13 +11,6 @@ export const ConfigPointSchema = z.object({
 })
 
 export type ConfigPoint = z.infer<typeof ConfigPointSchema>
-
-export const AnalysisResultSchema = z.object({
-	stormPeriods: z.array(ConfigPointSchema),
-	productionPoint: ConfigPointSchema,
-})
-
-export type AnalysisResult = z.infer<typeof AnalysisResultSchema>
 
 export interface HelpAction {
 	required: string[]

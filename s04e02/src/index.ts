@@ -1,9 +1,13 @@
+import { runAgent } from './agent'
+import { callApi } from './api'
 import { logger } from './logger'
-import { run } from './runner'
 
 async function main() {
 	logger.agent('info', 'Windpower turbine scheduler starting')
-	await run()
+	await callApi('start')
+	logger.agent('info', 'Service window opened')
+	const helpDocs = await callApi('help')
+	await runAgent(helpDocs)
 }
 
 main().catch((error) => {

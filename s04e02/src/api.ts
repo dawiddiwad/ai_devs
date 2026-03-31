@@ -4,6 +4,9 @@ import { logger } from './logger'
 
 const FLAG_REGEX = /\{FLG:.*?\}/
 const NO_RESULT_CODE = 11
+const QUEUE_CONFIRMATION_CODES = new Set([14, 21, 31, 41])
+
+const resultPool: Record<string, unknown>[] = []
 
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms))
@@ -40,58 +43,37 @@ export async function enqueue(action: string, params: Record<string, unknown> = 
 	await callApi(action, params)
 }
 
-export async function collectResultsBySource(sources: string[], timeoutMs = 40000): Promise<Record<string, unknown>> {
-	const collected: Record<string, unknown> = {}
+export async function collectMatchingResult(
+	predicate: (r: Record<string, unknown>) => boolean,
+	timeoutMs = 30000
+): Promise<Record<string, unknown>> {
 	const deadline = Date.now() + timeoutMs
 
-	while (Object.keys(collected).length < sources.length && Date.now() < deadline) {
+	while (Date.now() < deadline) {
+		const idx = resultPool.findIndex(predicate)
+		if (idx >= 0) {
+			return resultPool.splice(idx, 1)[0]
+		}
+
 		await sleep(500)
 		const result = (await callApi('getResult')) as Record<string, unknown>
+
 		if ((result['code'] as number) === NO_RESULT_CODE) {
 			continue
 		}
-		const source = result['sourceFunction'] as string | undefined
-		if (source && sources.includes(source)) {
-			collected[source] = result
-			logger.agent('info', `Collected result for: ${source} (${Object.keys(collected).length}/${sources.length})`)
-		} else {
-			logger.agent('warn', `Unexpected sourceFunction: ${source}`, {
-				result: JSON.stringify(result).slice(0, 200),
-			})
+
+		if (predicate(result)) {
+			return result
 		}
+
+		resultPool.push(result)
+		logger.agent('debug', `Pooled result for later`, { sourceFunction: result['sourceFunction'] })
 	}
 
-	if (Object.keys(collected).length < sources.length) {
-		const missing = sources.filter((s) => !(s in collected))
-		throw new Error(`Timeout waiting for: ${missing.join(', ')}`)
-	}
-
-	return collected
+	throw new Error('Timeout: no matching result found')
 }
 
-export async function collectNResults(source: string, count: number, timeoutMs = 40000): Promise<unknown[]> {
-	const results: unknown[] = []
-	const deadline = Date.now() + timeoutMs
-
-	while (results.length < count && Date.now() < deadline) {
-		await sleep(500)
-		const result = (await callApi('getResult')) as Record<string, unknown>
-		if ((result['code'] as number) === NO_RESULT_CODE) {
-			continue
-		}
-		if (result['sourceFunction'] === source) {
-			results.push(result)
-			logger.agent('info', `Collected ${source} result ${results.length}/${count}`)
-		} else {
-			logger.agent('warn', `Unexpected sourceFunction while collecting ${source}`, {
-				got: result['sourceFunction'],
-			})
-		}
-	}
-
-	if (results.length < count) {
-		throw new Error(`Timeout: collected ${results.length}/${count} ${source} results`)
-	}
-
-	return results
+export function isQueueConfirmation(response: unknown): boolean {
+	const r = response as Record<string, unknown>
+	return QUEUE_CONFIRMATION_CODES.has(r['code'] as number)
 }

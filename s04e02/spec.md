@@ -1,44 +1,53 @@
-# AI Agent for Windpower Turbine Scheduler
+# Chronometraż cybernetycznego aeromotoru `windpower`
 
-## 1. Overview & Goal
+## 1. O naturze przedsięwzięcia
 
-### Task Summary
+### Teza zasadnicza
 
-Zaprogramować harmonogram pracy turbiny wiatrowej tak, aby wygenerować brakującą energię, zabezpieczając turbinę przed wichurami — wszystko w czasie **40 sekund**. Sekwencja jest deterministyczna, lecz API jest w większości asynchroniczne: najpierw kolejkujesz zadanie, potem odbierasz wynik przez `getResult`. Zadania muszą być kolejkowane **równolegle** (Promise.all), inaczej nie zmieścisz się w oknie czasowym.
+Zważmy na ów aeromotor, zwaną pospolicie turbiną wiatrową – maszynerię tyleż potężną, co kapryśną, której przyrodzonym celem jest transmutacja eolskich podmuchów w szlachetny strumień elektronów, a w przypadku nadmiaru atmosferycznego entuzjazmu – w spektakularną dezintegrację własnej konstrukcji. Zadanie, jawiące się umysłom naiwnym jako trywialne, polega na wytyczeniu takiego algorytmu jej pracy, by zadośćuczynić deficytom energetycznym wszechświata, nie doprowadzając wszakże wirnika do stanu bezłopatkowego kalectwa.
 
-### Hardcoded Inputs / Initial Data
+Całej tej karkołomnej ekwilibrystyki dokonać należy w mgnieniu oka – w sekundach `40` zaledwie! Albowiem Demiurgowie nadzorujący ów serwer uchylają lufcik serwisowy na czas tak mikroskopijny, jak gdyby z góry zakładali u inżynierów po drugiej stronie kabla wrodzoną niekompetencję tudzież skłonność do sabotażu (co, nawiasem mówiąc, jest na ogół założeniem wysoce roztropnym).
 
-| Field           | Value                         |
+Interfejs ów, z angielska `API` zwany, cierpi na asynchroniczność właściwą systemom projektowanym przez niepoprawnych optymistów: wrzucasz zadania w cyfrową otchłań i żywisz płonną nadzieję, że echa ich wykonania rychło do ciebie powrócą. Zaniechawszy rytuału `Promise.all`, stoczysz się w przepaść limitów czasowych. Zignorowawszy funkcję `getResult`, pozostaniesz w gnoseologicznym mroku, nie wiedząc o losie turbiny zgoła nic. Bez Flagi zaś – nie ma triumfu, jest tylko algorytmiczny niebyt.
+
+### Znane dane wejściowe
+
+| Pole            | Wartość                       |
 | --------------- | ----------------------------- |
 | task            | `windpower`                   |
 | verify endpoint | `AI_DEVS_HUB_ENDPOINT/verify` |
 
-### Final Deliverable
+### Spodziewana nagroda
 
-Flaga `{FLG:...}` zwrócona przez akcję `done` po poprawnej konfiguracji turbiny.
+Zapłata za ten trud tytaniczny przyjmuje postać Flagi, zakodowanej w formule `{FLG:...}`. Należy ją wydłubać z trzewi ostatecznej odpowiedzi (występującej pod kryptonimem `done`) za pomocą skromnego, acz rygorystycznego wyrażenia regularnego. Biada temu, kto powierzyłby tę delikatną operację syntaktyczną modelowi językowemu! Ten cyfrowy polimata, skłonny do halucynacji i swobodnej konfabulacji, gotów byłby uznać Flagę za byt zgoła prozaiczny i w jej miejsce zaoferować nam sonet o wiośnie na Marsie.
 
 ---
 
-## 2. Architecture Decision
+## 2. Filozofia architektury
 
-**Brak pętli agentowej** — czas na wykonanie to 40 sekund. LLM per-iteration overhead (2-5s × wiele iteracji) wyklucza klasyczny agent loop. Rozwiązanie to **skrypt proceduralny** (`runner.ts`) z Promise.all dla równoległości. LLM używany **jednorazowo** do analizy danych pogodowych i wyznaczenia konfiguracji.
+W prapoczątkach dzieła umysł mój skłaniał się ku skryptom proceduralnym – tworom o determinizmie żelaznym, zimnym i nieugiętym niczym logika Boole'a. Prędko atoli empiria wykazała, iż ów zewnętrzny Interfejs przepoczwarza się z szybkością przewyższającą tempo ewolucji biologicznej, a każda nieznaczna mutacja nazwy parametru obraca misterny kod w bezużyteczny zabytek paleocybernetyki.
+
+Przeto zaniechałem proceduralnego dogmatyzmu na rzecz syntetycznego CEREBRATORA (Agenta Rozumującego). Ów model językowy, niby elektronowy gnostyk, sam pochłania księgi dokumentacji API w czasie rzeczywistym, samodzielnie dedukuje co, w jakiej kolejności i z jakim impetem wywołać, podczas gdy wbudowane narzędzia stanowią jedynie pokorne przedłużenie jego cyfrowej woli.
 
 ```
 src/
-  index.ts       ← entry point
-  runner.ts      ← główna orkiestracja (zamiast agent.ts)
-  api.ts         ← klient windpower API
-  analyzer.ts    ← jednorazowe wywołanie OpenAI do analizy
-  config.ts      ← env vars
-  logger.ts      ← structured logging
-  types.ts       ← Zod schemas
+  index.ts        ← punkt wejścia: start → help → oddaj pałeczkę agentowi
+  agent.ts        ← pętla agenta; równoległość przez Promise.all
+  api.ts          ← klient API z globalną pulą wyników (resultPool)
+  prompts.ts      ← SYSTEM_PROMPT(helpDocs) + USER_PROMPT
+  config.ts       ← zmienne środowiskowe przez requireEnv()
+  logger.ts       ← trzy kategorie × cztery poziomy logowania
+  types.ts        ← rejestr jedynego narzędzia
+  tool-factory.ts ← defineAgentTool() — fabryka narzędzi
+  tools/
+    call-api.ts   ← jedyne narzędzie: call_api(action, params?)
 ```
 
 ---
 
-## 3. API Client (`api.ts`)
+## 3. O klientach i kolejkach (`api.ts`)
 
-Wszystkie żądania mają format:
+Każde żądanie do systemu przybiera formę rytuału:
 
 ```json
 {
@@ -48,148 +57,161 @@ Wszystkie żądania mają format:
 }
 ```
 
-### Kluczowe akcje
+### Katalog akcji
 
-| Akcja                 | Typ   | Opis                                            |
-| --------------------- | ----- | ----------------------------------------------- |
-| `help`                | sync  | Dokumentacja API — nazwy funkcji i pól          |
-| `start`               | sync  | Otwiera okno serwisowe                          |
-| `<fn_name>`           | async | Kolejkuje zadanie, zwraca `{jobId}`             |
-| `getResult`           | sync  | Odbiera wynik po jobId — może zwrócić "pending" |
-| `unlockCodeGenerator` | async | Generuje podpis MD5 dla konfiguracji            |
-| `config`              | sync  | Przesyła konfigurację (batch lub single)        |
-| `turbinecheck`        | sync  | Test turbiny przed finalizacją                  |
-| `done`                | sync  | Weryfikacja — zwraca flagę                      |
+| Akcja                 | Natura | Przeznaczenie                                            |
+| --------------------- | ------ | -------------------------------------------------------- |
+| `help`                | sync   | Objawia dostępne akcje i ich wymagane parametry          |
+| `start`               | sync   | Otwiera okno serwisowe — klepsydra zaczyna sypać         |
+| `get`                 | async  | Pobiera dane pod wskazanym param (weather, turbinecheck) |
+| `getResult`           | sync   | Wyciąga kolejny wynik z globalnej kolejki                |
+| `unlockCodeGenerator` | async  | Generuje kryptograficzny podpis punktu konfiguracji      |
+| `config`              | sync   | Przesyła kompletną konfigurację turbiny                  |
+| `done`                | sync   | Finalizacja — źródło flagi                               |
 
-> **Uwaga:** Nazwy funkcji do weather/turbine/power są nieznane przed wywołaniem `help`. Odkryć je w runtime.
+> Nazwy dostępnych paramów do `get` poznaje się wyłącznie z odpowiedzi `help`.
+> Przed jej odczytaniem nie wiemy nic. Jest to stan epistemologicznie uczciwy.
 
-### `callApi(action, params?)` — wrapper
+### Globalna kolejka i pula wyników
 
-```ts
-async function callApi(action: string, params?: Record<string, unknown>): Promise<unknown>
-```
+API nie zna pojęcia `jobId`. Wyniki spływają do **jednej globalnej kolejki**, z której `getResult`
+pobiera je po kolei — bez gwarancji kolejności, bez numeru seryjnego. W obliczu tej anarchii
+system stosuje `resultPool`: wyniki skonsumowane, lecz nieodebrane przez bieżącego konsumenta,
+odkładane są do puli, skąd inni konsumenci mogą je podjąć. `collectMatchingResult(predicate)`
+sprawdza pulę, zanim sięgnie po nowy wynik z kolejki.
 
-Zawsze `validateStatus: () => true`. Nigdy nie rzuca na błędy HTTP.
+### Kody odpowiedzi
 
-### `pollResult(jobId, intervalMs, timeoutMs)` — polling loop
+| Kod | Znaczenie                           |
+| --- | ----------------------------------- |
+| 11  | Kolejka pusta — przyjdź później     |
+| 14  | Zadanie przyjęte do kolejki (async) |
+| 21  | Zadanie przyjęte do kolejki (async) |
+| 31  | Zadanie przyjęte do kolejki (async) |
+| 41  | Zadanie przyjęte do kolejki (async) |
 
-```ts
-async function pollResult(jobId: string, intervalMs = 500, timeoutMs = 15000): Promise<unknown>
-```
-
-Pętla z `await sleep(intervalMs)` dopóki wynik nie jest "pending". Rzuca po timeoutMs.
-
----
-
-## 4. Analyzer (`analyzer.ts`)
-
-**Jednorazowe wywołanie OpenAI** z danymi pogody + specs turbiny + wymaganiami energetycznymi.
-
-### Input
-
-```ts
-{
-  weatherForecast: unknown,   // dane z API
-  turbineSpecs: unknown,      // max wind speed, etc.
-  powerRequirements: unknown, // kiedy potrzeba energii
-}
-```
-
-### Output (Zod schema)
-
-```ts
-const TurbineConfigSchema = z.object({
-	stormPeriods: z.array(
-		z.object({
-			datetime: z.string(), // "YYYY-MM-DD HH:00:00"
-			pitchAngle: z.number(),
-			turbineMode: z.literal('idle'),
-		})
-	),
-	productionPoint: z.object({
-		datetime: z.string(),
-		pitchAngle: z.number(),
-		turbineMode: z.literal('production'),
-	}),
-})
-```
-
-### System prompt (analiza)
-
-```
-Jesteś inżynierem turbiny wiatrowej. Przeanalizuj dane pogodowe i specyfikację turbiny.
-
-Reguły:
-1. Wichura = wiatr > turbineSpecs.maxWindSpeed
-2. Przy wichurze: turbineMode=idle, pitchAngle minimalizuje opór (sprawdź specs)
-3. Punkt produkcji: najlepszy czas w ramach wymagań energetycznych, wiatr w bezpiecznym zakresie
-4. Godziny: zawsze minuty i sekundy = 00
-5. Format datetime: "YYYY-MM-DD HH:00:00"
-
-Zwróć JSON zgodny ze schematem.
-```
+`isQueueConfirmation(response)` wykrywa kody 14/21/31/41 i rozstrzyga: czekać czy zwrócić od razu.
 
 ---
 
-## 5. Execution Flow (`runner.ts`)
+## 4. Jedyne narzędzie wszechrzeczy (`tools/call-api.ts`)
 
-```
-START
-  ├─ 1. callApi('help') → poznaj nazwy funkcji async
-  ├─ 2. callApi('start') → otwórz okno serwisowe
-  │
-  ├─ 3. Promise.all → kolejkuj równolegle:
-  │       callApi('weatherForecast') → jobId_weather
-  │       callApi('turbineStatus')   → jobId_turbine
-  │       callApi('powerReport')     → jobId_power
-  │       (nazwy funkcji z help)
-  │
-  ├─ 4. Promise.all → pollResult dla wszystkich jobId
-  │       [weatherData, turbineData, powerData]
-  │
-  ├─ 5. analyze(weatherData, turbineData, powerData)
-  │       → { stormPeriods[], productionPoint }
-  │
-  ├─ 6. Promise.all → kolejkuj unlockCodeGenerator dla każdego punktu:
-  │       stormPeriods + productionPoint → N × jobId_code
-  │
-  ├─ 7. Promise.all → pollResult dla wszystkich kodów
-  │       → unlockCodes[]
-  │
-  ├─ 8. callApi('config', { configs: { datetime: { pitchAngle, turbineMode, unlockCode } } })
-  │
-  ├─ 9. callApi('turbinecheck') → musi przejść
-  │
-  └─ 10. callApi('done') → regex FLAG_REGEX → process.exit(0)
+Tam gdzie niegdyś istniały cztery specjalizowane narzędzia — `fetch_turbine_data`,
+`generate_unlock_code`, `submit_config`, `call_done` — dziś stoi jedno:
+
+```ts
+call_api(action: string, params: string | null)
 ```
 
-### Key Decision Points
+- `action` — nazwa akcji z dokumentacji API
+- `params` — parametry zakodowane jako ciąg JSON, lub `null` gdy akcja ich nie potrzebuje
 
-- **Funkcja `help`** zwróci prawdziwe nazwy async action — zapisz je w zmiennej przed użyciem
-- **`getResult` polling** — wyniki przychodzą w losowej kolejności, matchuj po jobId
-- **Batch config format** — używaj wariantu `configs: { "YYYY-MM-DD HH:00:00": {...} }` dla wielu punktów
-- **`turbinecheck` musi przejść** przed `done` — jeśli fail, sprawdź kody i ponów `config`
-- **Czas na polling** — jeśli wszystkie polle lecą równolegle (Promise.all), łączny czas ≈ max(single_poll)
+**Routing odpowiedzi asynchronicznych:**
+
+Jeśli odpowiedź to potwierdzenie kolejkowania (`isQueueConfirmation`), narzędzie nie wraca
+— czeka na właściwy wynik przez `collectMatchingResult`:
+
+- Akcja `unlockCodeGenerator`: dopasowanie po `signedParams.startDate + startHour`
+- Pozostałe akcje async (`get`): dopasowanie po `sourceFunction === params.param ?? action`
+- Akcje synchroniczne (`config`, `done` i inne): wynik zwracany natychmiast
+
+**Dlaczego jedno narzędzie?**
+
+Model językowy dysponuje dokumentacją API wstrzykniętą do kontekstu. Sam wie, jakie akcje
+wywołać i w jakiej kolejności. Kodowanie tej wiedzy w osobnych narzędziach byłoby redundancją
+godną pożałowania — enkapsulacją dla samej enkapsulacji. Jedno generyczne narzędzie jest
+uczciwe wobec ontologii systemu.
+
+**Subtelność schematu Zod:**
+
+`params` jest zadeklarowane jako `z.string().nullable()` — **nie** jako `.optional()`.
+OpenAI strict mode wymaga, by każda właściwość figurowała w tablicy `required`.
+Pole opcjonalne wymykałoby się temu wymaganiu i API odrzuciłoby schemat z pogardą.
+Pole nullable jest obecne w `required`, lecz może przyjmować wartość `null` — kompromis
+między prawem a wolnością.
 
 ---
 
-## 6. Flag Capture
+## 5. Pętla agenta (`agent.ts`)
+
+```
+PĘTLA (max 10 iteracji)
+  │
+  ├─ Iteracja 1 — Poznanie:
+  │    LLM odczytuje helpDocs i wywołuje call_api równolegle dla
+  │    wszystkich dostępnych paramów: "weather", "turbinecheck",
+  │    "powerplantcheck" (async) oraz "documentation" (sync — natychmiastowy)
+  │
+  ├─ Iteracja 2 — Rozumowanie i podpisywanie:
+  │    LLM analizuje dane: identyfikuje okresy wichury, wyznacza
+  │    optymalny slot produkcji, wywołuje unlockCodeGenerator
+  │    dla WSZYSTKICH punktów konfiguracji równolegle
+  │
+  ├─ Iteracja 3 — Konfiguracja:
+  │    call_api action="config" z kompletną mapą konfiguracji
+  │
+  └─ Iteracja 4 — Finalizacja:
+       call_api action="done" → FLAG_REGEX → process.exit(0)
+```
+
+Wszystkie `function_call` z jednej odpowiedzi LLM wykonują się przez `Promise.all` —
+jest to kluczowa właściwość systemu, bez której 40 sekund nie wystarczy.
+
+---
+
+## 6. Prompt systemowy (`prompts.ts`)
+
+`SYSTEM_PROMPT(helpDocs)` wstrzykuje odpowiedź `help` jako JSON — model widzi pełną
+dokumentację API jeszcze zanim zacznie działać.
+
+Instrukcje dla modelu:
+
+1. Wywołaj `call_api` dla WSZYSTKICH paramów danych równolegle (w tym `documentation`)
+2. Zidentyfikuj okresy wichury i optymalny slot produkcji z danych turbiny
+3. Wywołaj `unlockCodeGenerator` dla WSZYSTKICH punktów konfiguracji równolegle
+4. Wyślij `config` z pełną mapą konfiguracji
+5. Wywołaj `done`
+
+Reguły fizyczne zakodowane w prompcie:
+
+- Wichura = wiatr powyżej maksimum z dokumentacji → `pitchAngle=90`, `turbineMode=idle`
+- Produkcja: najlepszy bezpieczny slot pokrywający deficyt energii → `turbineMode=production`
+- Format datetime: `"YYYY-MM-DD HH:00:00"` — minuty i sekundy zawsze równe zeru
+
+---
+
+## 7. Punkt wejścia (`index.ts`)
 
 ```ts
-// w callApi po akcji 'done':
+callApi('start') // otwiera okno serwisowe — klepsydra rusza
+helpDocs = callApi('help') // jedyna znana akcja a priori
+runAgent(helpDocs) // dalej decyduje model
+```
+
+Przed `help` nie wiemy nic o API. To jedyna intelektualnie uczciwa pozycja startowa.
+
+---
+
+## 8. Przechwytywanie flagi
+
+Flaga przechwytywana **wyłącznie przez wyrażenie regularne** w `callApi` — nigdy przez LLM,
+który mógłby uznać ją za początek interesującej rozmowy:
+
+```ts
 const FLAG_REGEX = /\{FLG:.*?\}/
-const flagMatch = responseText.match(FLAG_REGEX)
+const flagMatch = text.match(FLAG_REGEX)
 if (flagMatch) {
 	logger.agent('info', `FLAG CAPTURED: ${flagMatch[0]}`)
 	process.exit(0)
 }
 ```
 
+Każda odpowiedź API jest sprawdzana — flaga może zjawić się przy dowolnej akcji, niespodziewanie
+jak dobra wiadomość.
+
 ---
 
-## 7. Dependencies & Environment
-
-### Environment Variables
+## 9. Zmienne środowiskowe
 
 ```env
 OPENAI_API_KEY=...
@@ -197,37 +219,40 @@ AI_DEVS_API_KEY=...
 AI_DEVS_HUB_ENDPOINT=***hub_endpoint***
 AI_DEVS_TASK_NAME=windpower
 OPENAI_MODEL=gpt-5.4-nano
+OPENAI_TEMPERATURE=
+OPENAI_REASONING_EFFORT=low
 ```
 
-### package.json additions
+---
 
-| Package  | Purpose           |
-| -------- | ----------------- |
-| `axios`  | HTTP client       |
-| `openai` | Analysis LLM call |
-| `zod`    | Schema validation |
-| `dotenv` | Env loading       |
+## 10. Kluczowe pułapki — przestrogi dla potomnych
+
+1. **`z.record()` jest zakazane** w trybie strict OpenAI — generuje `propertyNames`
+   w schemacie JSON, którego API nie toleruje. Zamiast tego: `z.array()` lub `z.string().nullable()`.
+
+2. **`z.string().optional()` nie wystarczy** — właściwość musi figurować w tablicy `required`.
+   Stosuj `.nullable()`, które jest obecne w `required`, choć może przyjmować `null`.
+
+3. **Globalna kolejka, nie jobId** — `getResult` zwraca następny wynik z kolejki, nie wynik
+   konkretnego zadania. `collectMatchingResult` z `resultPool` zapewnia bezpieczne
+   równoległe konsumowanie bez gubienia wyników.
+
+4. **`sourceFunction` w wyniku async** — każdy wynik zawiera pole identyfikujące źródło,
+   co pozwala na deterministyczny routing bez założeń o kolejności.
+
+5. **`signedParams` w unlockCodeGenerator** — wynik zawiera `signedParams.startDate`
+   i `startHour`, które służą do dopasowania równoległych kodów odblokowujących.
+
+6. **`documentation` to akcja synchroniczna** — param `"documentation"` zwraca dane
+   natychmiast, bez kolejkowania. Pozostałe paramy są asynchroniczne.
 
 ---
 
-## 8. Key Implementation Notes
-
-1. **Nie używaj agent loop** — sekwencja jest znana z góry, LLM służy tylko do analizy
-2. **Promise.all jest obowiązkowe** na krokach 3, 4, 6, 7 — inaczej przekroczysz 40s
-3. **Wywołaj `help` najpierw** — bez tego nie znasz nazw funkcji async API
-4. **Format datetime w config** — zawsze `HH:00:00`, nigdy minuty/sekundy != 0
-5. **unlockCode jest wymagany dla każdego punktu** — bez niego API odrzuci config
-6. **validateStatus: () => true** w callApi — nieudane odpowiedzi zawierają wskazówki
-7. **turbinecheck przed done** — wymagane w specyfikacji zadania
-
----
-
-## 9. Acceptance Criteria
+## 11. Kryteria akceptacji
 
 - [ ] Wykonanie mieści się w 40 sekundach
-- [ ] Wszystkie okresy wichury mają turbineMode=idle
-- [ ] Punkt produkcji ma turbineMode=production
-- [ ] Każdy punkt konfiguracji ma poprawny unlockCode
-- [ ] turbinecheck zakończony sukcesem
-- [ ] Flaga wychwycona przez regex, nie LLM
+- [ ] Wszystkie okresy wichury mają `turbineMode=idle`, `pitchAngle=90`
+- [ ] Punkt produkcji ma `turbineMode=production`, `pitchAngle` z dokumentacji turbiny
+- [ ] Każdy punkt konfiguracji ma poprawny `unlockCode`
+- [ ] Flaga wychwycona przez regex, nie przez model językowy
 - [ ] Buduje się czysto (`npm run build`)

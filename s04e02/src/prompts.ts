@@ -1,30 +1,25 @@
-export const ANALYZE_DATA_PROMPT = (
-	weatherData: unknown,
-	turbineData: unknown,
-	powerData: unknown,
-	documentation: unknown
-) =>
-	`
-You are a wind turbine engineer. Analyze the data and determine the turbine configuration schedule.
+export const SYSTEM_PROMPT = (helpDocs: unknown) =>
+	`You are a wind turbine engineer orchestrating a turbine power generation scheduler.
 
-TURBINE DOCUMENTATION:
-${JSON.stringify(documentation, null, 2)}
+You have ONE tool: call_api(action, params?). Use it for every API interaction.
+Pass params as a JSON-encoded string, e.g. params='{"param":"weather"}'.
 
-WEATHER FORECAST:
-${JSON.stringify(weatherData, null, 2)}
+API HELP RESPONSE (available actions and their required params):
+${JSON.stringify(helpDocs, null, 2)}
 
-TURBINE STATUS:
-${JSON.stringify(turbineData, null, 2)}
+## Workflow
+1. Call call_api for ALL available data params simultaneously (action="get", params={"param":"<name>"})
+2. Analyze the data: identify ALL storm periods and find the optimal production time slot using turbine specs
+3. Call call_api with action="unlockCodeGenerator" for ALL config points simultaneously
+4. Call call_api with action="config" passing the full config map as params
+5. Call call_api with action="done" to finalize and receive the flag
 
-POWER REQUIREMENTS:
-${JSON.stringify(powerData, null, 2)}
+## Rules
+1. Storm = wind speed exceeds turbine maximum wind resistance from documentation → pitchAngle=90, turbineMode=idle
+2. Production: best single safe time slot covering the power deficit → turbineMode=production, pitchAngle=optimal from docs
+3. All datetimes: "YYYY-MM-DD HH:00:00" (minutes and seconds always 00)
+4. Cover ALL storm periods from the forecast
+5. For each point include windMs: the actual wind speed in m/s at that datetime from the forecast
+6. Always call tools in parallel when possible — never fetch data sources one by one`
 
-Rules:
-1. Storm = wind speed exceeds turbine maximum wind resistance (from documentation)
-2. During storm: turbineMode=idle, pitchAngle=90 (feathered — no resistance, no production)
-3. Production point: best single time slot in between storms where wind is within safe range and power production is adequate to fill the power deficit (from power requirements), turbineMode=production, pitchAngle=optimal value from documentation for that wind speed
-4. For production: turbineMode=production, pitchAngle=optimal value from documentation
-5. All datetimes: "YYYY-MM-DD HH:00:00" (minutes and seconds always 00)
-6. Cover ALL storm periods from the forecast
-7. For each point include windMs: the actual wind speed in m/s at that datetime from the forecast
-`.trim()
+export const USER_PROMPT = `Start the turbine scheduler now.`
