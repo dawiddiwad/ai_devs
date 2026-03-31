@@ -1,70 +1,81 @@
-import { callApi, pollAll, queueJob } from './api'
-import { analyzeData, parseApiDocs } from './analyzer'
+import { callApi, collectNResults, collectResultsBySource, enqueue } from './api'
+import { analyzeData } from './analyzer'
 import { logger } from './logger'
-import type { ConfigPoint } from './types'
+import type { ConfigPoint, HelpResponse } from './types'
+
+interface UnlockResult {
+	unlockCode: string
+	signedParams: { startDate: string; startHour: string }
+}
+
+function buildUnlockParams(required: string[], point: ConfigPoint): Record<string, unknown> {
+	const [startDate, startHour] = point.datetime.split(' ')
+	const lookup: Record<string, unknown> = {
+		startDate,
+		startHour,
+		pitchAngle: point.pitchAngle,
+		turbineMode: point.turbineMode,
+		windMs: point.windMs,
+	}
+	return Object.fromEntries(required.map((key) => [key, lookup[key]]))
+}
 
 export async function run(): Promise<void> {
 	logger.agent('info', 'Starting windpower runner')
-
-	const helpResult = await callApi('help')
-	const helpText = typeof helpResult === 'string' ? helpResult : JSON.stringify(helpResult)
-	logger.agent('info', 'API docs received', { length: helpText.length })
-
-	const apiActions = await parseApiDocs(helpText)
-
 	await callApi('start')
 	logger.agent('info', 'Service window opened')
 
-	const [weatherJobId, turbineJobId, powerJobId] = await Promise.all([
-		queueJob(apiActions.weatherAction),
-		queueJob(apiActions.turbineAction),
-		queueJob(apiActions.powerAction),
+	const [helpData, documentation] = await Promise.all([
+		callApi('help') as Promise<HelpResponse>,
+		callApi('get', { param: 'documentation' }),
 	])
-	logger.agent('info', 'Async jobs queued', { weatherJobId, turbineJobId, powerJobId })
+	const unlockRequired = helpData.actions['unlockCodeGenerator']?.required ?? []
+	logger.agent('info', 'Help and docs fetched', { unlockRequired })
 
-	const [weatherResult, turbineResult, powerResult] = await pollAll([weatherJobId, turbineJobId, powerJobId])
-	logger.agent('info', 'All async results received')
+	await Promise.all([
+		enqueue('get', { param: 'weather' }),
+		enqueue('get', { param: 'turbinecheck' }),
+		enqueue('get', { param: 'powerplantcheck' }),
+	])
+	logger.agent('info', 'Queued 3 data jobs')
 
-	const { stormPeriods, productionPoint } = await analyzeData(weatherResult, turbineResult, powerResult)
+	const dataResults = await collectResultsBySource(['weather', 'turbinecheck', 'powerplantcheck'])
+
+	const { stormPeriods, productionPoint } = await analyzeData(
+		dataResults['weather'],
+		dataResults['turbinecheck'],
+		dataResults['powerplantcheck'],
+		documentation
+	)
 
 	const allPoints: ConfigPoint[] = [...stormPeriods, productionPoint]
 
-	const unlockJobIds = await Promise.all(
-		allPoints.map((point) => {
-			const [startDate, startHour] = point.datetime.split(' ')
-			const unlockParams: Record<string, unknown> = {
-				startDate,
-				startHour,
-				pitchAngle: point.pitchAngle,
-				turbineMode: point.turbineMode,
-			}
-			return queueJob('unlockCodeGenerator', unlockParams)
-		})
+	await Promise.all(
+		allPoints.map((point) => enqueue('unlockCodeGenerator', buildUnlockParams(unlockRequired, point)))
 	)
-	logger.agent('info', 'Unlock code jobs queued', { count: unlockJobIds.length })
+	logger.agent('info', 'Queued unlock code jobs', { count: allPoints.length })
 
-	const unlockResults = await pollAll(unlockJobIds)
-	logger.agent('info', 'Unlock codes received')
+	const unlockResults = (await collectNResults('unlockCodeGenerator', allPoints.length)) as UnlockResult[]
 
 	const configs: Record<string, { pitchAngle: number; turbineMode: string; unlockCode: string }> = {}
-	for (let i = 0; i < allPoints.length; i++) {
-		const point = allPoints[i]
-		const codeResult = unlockResults[i] as Record<string, unknown>
-		const unlockCode =
-			codeResult['code'] ?? codeResult['unlockCode'] ?? codeResult['result'] ?? String(unlockResults[i])
+	for (const point of allPoints) {
+		const [startDate, startHour] = point.datetime.split(' ')
+		const match = unlockResults.find(
+			(r) => r.signedParams?.startDate === startDate && r.signedParams?.startHour === startHour
+		)
+		if (!match) {
+			throw new Error(`No unlock code found for ${point.datetime}`)
+		}
+		logger.agent('info', `Unlock code for ${point.datetime}`, { unlockCode: match.unlockCode })
 		configs[point.datetime] = {
 			pitchAngle: point.pitchAngle,
 			turbineMode: point.turbineMode,
-			unlockCode: String(unlockCode),
+			unlockCode: match.unlockCode,
 		}
 	}
 
 	logger.agent('info', 'Submitting batch config', { entries: Object.keys(configs).length })
 	await callApi('config', { configs })
-
-	logger.agent('info', 'Running turbine check')
-	const checkResult = await callApi('turbinecheck')
-	logger.agent('info', 'Turbine check result', { result: JSON.stringify(checkResult).slice(0, 200) })
 
 	logger.agent('info', 'Sending done action')
 	await callApi('done')

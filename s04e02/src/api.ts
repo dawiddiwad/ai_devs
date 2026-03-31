@@ -3,6 +3,7 @@ import { config } from './config'
 import { logger } from './logger'
 
 const FLAG_REGEX = /\{FLG:.*?\}/
+const NO_RESULT_CODE = 11
 
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms))
@@ -20,7 +21,7 @@ export async function callApi(action: string, params: Record<string, unknown> = 
 	const response = await axios.post(config.verifyEndpoint, payload, { validateStatus: () => true })
 	const text = typeof response.data === 'string' ? response.data : JSON.stringify(response.data)
 
-	logger.api('info', `← ${action} [${response.status}]`, { preview: text.slice(0, 300) })
+	logger.api('info', `← ${action} [${response.status}]`, { preview: text.slice(0, 600) })
 
 	const flagMatch = text.match(FLAG_REGEX)
 	if (flagMatch) {
@@ -35,28 +36,62 @@ export async function callApi(action: string, params: Record<string, unknown> = 
 	}
 }
 
-export async function queueJob(action: string, params: Record<string, unknown> = {}): Promise<string> {
-	const result = (await callApi(action, params)) as Record<string, unknown>
-	const jobId = result['jobId'] ?? result['id'] ?? result['taskId']
-	if (typeof jobId !== 'string' && typeof jobId !== 'number') {
-		throw new Error(`No jobId in response for ${action}: ${JSON.stringify(result)}`)
-	}
-	return String(jobId)
+export async function enqueue(action: string, params: Record<string, unknown> = {}): Promise<void> {
+	await callApi(action, params)
 }
 
-export async function pollResult(jobId: string, timeoutMs = 25000): Promise<unknown> {
+export async function collectResultsBySource(sources: string[], timeoutMs = 40000): Promise<Record<string, unknown>> {
+	const collected: Record<string, unknown> = {}
 	const deadline = Date.now() + timeoutMs
-	while (Date.now() < deadline) {
-		await sleep(700)
-		const result = (await callApi('getResult', { jobId })) as Record<string, unknown>
-		const status = result['status']
-		if (status !== 'pending' && status !== 'processing' && status !== 'queued' && status !== 'in_progress') {
-			return result
+
+	while (Object.keys(collected).length < sources.length && Date.now() < deadline) {
+		await sleep(500)
+		const result = (await callApi('getResult')) as Record<string, unknown>
+		if ((result['code'] as number) === NO_RESULT_CODE) {
+			continue
+		}
+		const source = result['sourceFunction'] as string | undefined
+		if (source && sources.includes(source)) {
+			collected[source] = result
+			logger.agent('info', `Collected result for: ${source} (${Object.keys(collected).length}/${sources.length})`)
+		} else {
+			logger.agent('warn', `Unexpected sourceFunction: ${source}`, {
+				result: JSON.stringify(result).slice(0, 200),
+			})
 		}
 	}
-	throw new Error(`Timeout polling jobId: ${jobId}`)
+
+	if (Object.keys(collected).length < sources.length) {
+		const missing = sources.filter((s) => !(s in collected))
+		throw new Error(`Timeout waiting for: ${missing.join(', ')}`)
+	}
+
+	return collected
 }
 
-export async function pollAll(jobIds: string[]): Promise<unknown[]> {
-	return Promise.all(jobIds.map((id) => pollResult(id)))
+export async function collectNResults(source: string, count: number, timeoutMs = 40000): Promise<unknown[]> {
+	const results: unknown[] = []
+	const deadline = Date.now() + timeoutMs
+
+	while (results.length < count && Date.now() < deadline) {
+		await sleep(500)
+		const result = (await callApi('getResult')) as Record<string, unknown>
+		if ((result['code'] as number) === NO_RESULT_CODE) {
+			continue
+		}
+		if (result['sourceFunction'] === source) {
+			results.push(result)
+			logger.agent('info', `Collected ${source} result ${results.length}/${count}`)
+		} else {
+			logger.agent('warn', `Unexpected sourceFunction while collecting ${source}`, {
+				got: result['sourceFunction'],
+			})
+		}
+	}
+
+	if (results.length < count) {
+		throw new Error(`Timeout: collected ${results.length}/${count} ${source} results`)
+	}
+
+	return results
 }
