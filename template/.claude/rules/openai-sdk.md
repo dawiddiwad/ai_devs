@@ -20,56 +20,15 @@ import { z } from 'zod/v4'
 
 ## Bundled Tool Pattern
 
-Define schema, OpenAI function definition, and handler in one place using `defineTool()`.
-
-### tool-factory.ts
-
-```ts
-import { z } from 'zod/v4'
-import { FunctionTool } from 'openai/resources/responses/responses'
-
-export interface BoundTool {
-	definition: FunctionTool
-	execute: (args: unknown) => Promise<string>
-}
-
-export function defineTool<T extends z.ZodType>(config: {
-	name: string
-	description: string
-	schema: T
-	handler: (args: z.infer<T>) => Promise<string>
-}): BoundTool {
-	const jsonSchema = z.toJSONSchema(config.schema) as Record<string, unknown>
-	delete jsonSchema['$schema']
-
-	const definition: FunctionTool = {
-		type: 'function',
-		name: config.name,
-		description: config.description,
-		parameters: jsonSchema,
-		strict: true,
-	}
-
-	return {
-		definition,
-		execute: async (args: unknown) => {
-			const parsed = config.schema.safeParse(args)
-			if (!parsed.success) {
-				return JSON.stringify({ error: `Invalid args: ${parsed.error.message}` })
-			}
-			return config.handler(parsed.data)
-		},
-	}
-}
-```
+`src/tool-factory.ts` is part of the template — do not redefine it. It exports `defineTool()` (returns `AgentTool`) and the `AgentTool` interface. Use it directly.
 
 ### Tool file (one per tool)
 
 ```ts
 import { z } from 'zod/v4'
-import { defineTool } from '../tool-factory'
+import { defineAgentTool } from '../tool-factory'
 
-export const myTool = defineTool({
+export const myTool = defineAgentTool({
 	name: 'my_tool',
 	description: '...',
 	schema: z.object({
@@ -86,13 +45,13 @@ export const myTool = defineTool({
 
 ```ts
 import { Tool } from 'openai/resources/responses/responses'
-import { BoundTool } from './tool-factory'
+import { AgentTool } from './tool-factory'
 import { myTool } from './tools/my-tool'
 
-export const boundTools: BoundTool[] = [myTool]
+export const agentTools: AgentTool[] = [myTool]
 
 export const toolDefinitions = [
-	...boundTools.map((t) => t.definition),
+	...agentTools.map((t) => t.definition),
 	{ type: 'code_interpreter', container: { type: 'auto', memory_limit: '1g' } },
 ] satisfies Tool[]
 ```
@@ -109,7 +68,6 @@ const conversation = await client.conversations.create({
 
 let inputMessages: ResponseInput = []
 for (let i = 0; i < MAX_ITERATIONS; i++) {
-	inputMessages = []
 	const response = await client.responses.create({
 		model: config.openaiModel,
 		conversation: conversation.id,
@@ -120,7 +78,7 @@ for (let i = 0; i < MAX_ITERATIONS; i++) {
 		reasoning: { effort: config.openaiReasoningEffort },
 		context_management: [{ type: 'compaction', compact_threshold: 100000 }],
 	})
-
+	inputMessages = []
 	for (const item of response.output) {
 		if (item.type === 'message') {
 			logger.agent('info', 'Agent message', { content: item.content })
@@ -131,7 +89,7 @@ for (let i = 0; i < MAX_ITERATIONS; i++) {
 		if (item.type === 'function_call') {
 			logger.agent('info', `Tool call: ${item.name}`)
 			try {
-				const tool = boundTools.find((t) => t.definition.name === item.name)
+				const tool = agentTools.find((t) => t.definition.name === item.name)
 				const result = tool
 					? await tool.execute(JSON.parse(item.arguments))
 					: JSON.stringify({ error: `Unknown tool: ${item.name}` })
