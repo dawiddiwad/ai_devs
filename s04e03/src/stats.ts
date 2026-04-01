@@ -30,7 +30,6 @@ export function recordAction(action: string, failed = false): void {
 }
 
 export function updateActionPointsLeft(responseText: string): void {
-	// Try JSON parse first — walk all numeric values for point-like keys
 	try {
 		const parsed = JSON.parse(responseText) as unknown
 		const found = findPointsInObject(parsed)
@@ -39,10 +38,9 @@ export function updateActionPointsLeft(responseText: string): void {
 			return
 		}
 	} catch {
-		// not JSON
+		// ignore JSON parse errors, we'll try regex next
 	}
 
-	// Fallback: regex scan for common patterns in plain text
 	const patterns = [
 		/action\s*points?\s*left[^0-9]*(\d+)/i,
 		/points?\s*left[^0-9]*(\d+)/i,
@@ -98,15 +96,22 @@ export function printSummary(result: 'FLAG CAPTURED' | 'MAX ITERATIONS REACHED')
 	const elapsedSec = (elapsedMs / 1000).toFixed(2)
 	const totalActions = Object.values(stats.actionCounts).reduce((sum, s) => sum + s.total, 0)
 
-	const metricRows: [string, string][] = [
-		['Model', config.openaiModel],
-		['Action Points Left', stats.actionPointsLeft !== null ? String(stats.actionPointsLeft) : 'unknown'],
-		['Total Runtime', `${elapsedSec} seconds`],
-		['Agent Iterations', String(stats.iterations)],
-		['Total API Actions', String(totalActions)],
-		['Final Result', result],
-		...(stats.flagValue ? ([['Flag Value', stats.flagValue]] as [string, string][]) : []),
-	]
+	const metricRows: [string, string][] = []
+	if (config.useSubagents) {
+		metricRows.push(['Orchestrator', config.orchestratorModel])
+		metricRows.push(['Subagent', config.clusterAgentModel])
+	} else {
+		metricRows.push(['Model', config.openaiModel])
+	}
+	metricRows.push([
+		'Action Points Left',
+		stats.actionPointsLeft !== null ? String(stats.actionPointsLeft) : 'unknown',
+	])
+	metricRows.push(['Total Runtime', `${elapsedSec} seconds`])
+	metricRows.push(['Agent Iterations', String(stats.iterations)])
+	metricRows.push(['Total API Actions', String(totalActions)])
+	metricRows.push(['Final Result', result])
+	metricRows.push(...(stats.flagValue ? ([['Flag Value', stats.flagValue]] as [string, string][]) : []))
 
 	const actionRows: [string, string][] = Object.entries(stats.actionCounts)
 		.sort((a, b) => b[1].total - a[1].total)

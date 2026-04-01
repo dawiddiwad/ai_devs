@@ -4,14 +4,22 @@ import { runClusterAgent } from '../cluster-agent'
 
 export const spawnClusterAgentTool = defineAgentTool({
 	name: 'spawn_cluster_agent',
-	description:
-		'Spawn a cluster agent to execute a pre-planned search of one building cluster. Pass the full cluster plan JSON including help docs, cells to inspect, action sequence, and point budget. Returns "found at XN" or "cluster clear".',
+	description: 'Delegate a building cluster search to a field agent. Returns "found at XN" or "cluster clear".',
 	schema: z.object({
 		plan: z
+			.array(
+				z.object({
+					action: z.string().describe('API action name, e.g. help, callHelicopter'),
+					params: z.string().nullable().describe('JSON-encoded params object, e.g. {"position":"A7"}'),
+				})
+			)
+			.describe('Cluster mission array of API actions to execute in order: [{action: string, params?: object}]'),
+		apiHelp: z
 			.string()
 			.describe(
-				'JSON string with the cluster mission: { clusterId, cells, pointBudget, helpResponse, actions[] }'
+				'Raw API help response text to include in the cluster agent prompt so it can understand the API it can use'
 			),
 	}),
-	handler: async ({ plan }) => runClusterAgent(plan),
+	strict: true,
+	handler: async (plan) => runClusterAgent(JSON.stringify(plan)),
 })

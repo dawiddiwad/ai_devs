@@ -1,217 +1,260 @@
 # Agent `domatowo`
 
-## 1. Overview & Goal
+## 1. Cel i zakres operacji
 
-### Task Summary
+### Streszczenie zadania
 
-Misja ratunkowa w zbombardowanym Domatowie. Na podstawie przechwyconego sygnału radiowego wiadomo, że partyzant ukrywa się w jednym z **najwyższych bloków** na mapie 11×11. Agent musi: zbadać mapę terenu, zaplanować optymalną trasę transporterów i zwiadowców, przeprowadzić inspekcje budynków (najwyższe pierwsze), odnaleźć człowieka i wezwać helikopter — wszystko w limicie 300 punktów akcji.
+Oto bowiem Domatowo — miasto, które przestało istnieć, lecz jeszcze o tym nie wie. Na jego siatce 11×11 pól ukrywa się człowiek w jednym z najwyższych bloków, a my — uzbrojeni w transportery, zwiadowców i skończony budżet punktów akcji — musimy go odnaleźć i wezwać śmigłowiec, zanim skończy nam się zarówno czas, jak i cierpliwość modelu językowego.
 
-### Hardcoded Inputs / Initial Data
+System działa w dwóch trybach, przełączanych zmienną `USE_SUBAGENTS`. W trybie agentów klastrowych orkiestrator planuje, deleguje i koordynuje; agenci klastrowi wykonują rozkazy w oddzielnych, świeżych kontekstach. W trybie jednolitym orkiestrator planuje i wykonuje sam — równolegle, iteracja za iteracją.
 
-| Field           | Value                                              |
-| --------------- | -------------------------------------------------- |
-| Task name       | `domatowo`                                         |
-| Verify endpoint | `config.verifyEndpoint` (`HUB_ENDPOINT + /verify`) |
-| API key         | `config.aiDevsApiKey`                              |
-| Starting action | `help` → autonomously discover all actions         |
+### Dane wejściowe
 
-### Final Deliverable
+| Pole | Wartość |
+|---|---|
+| Nazwa zadania | `domatowo` |
+| Endpoint weryfikacji | `config.verifyEndpoint` (`HUB_ENDPOINT + /verify`) |
+| Klucz API | `config.aiDevsApiKey` |
+| Punkt startowy | akcja `help` — orkiestrator odkrywa API autonomicznie |
 
-Flaga `/\{FLG:.*?\}/` w odpowiedzi na `callHelicopter` z poprawnymi współrzędnymi. Zalogowana, `process.exit(0)`.
+### Produkt końcowy
+
+Flaga `/\{FLG:.*?\}/` w odpowiedzi na `callHelicopter`. Przechwycona przez regex w `call-api.ts`, zalogowana, `process.exit(0)`.
 
 ---
 
-## 2. Agent Persona & Prompt Strategy
+## 2. Architektura
 
-### System Prompt
+### Tryb agentów klastrowych (`USE_SUBAGENTS=true`)
 
-```markdown
-You are a tactical mission commander coordinating a rescue operation in the destroyed
-city of Domatowo (11×11 grid map).
-
-## Intelligence
-
-Intercepted radio signal: "I'm alive. Bombs destroyed the city. Soldiers were here,
-took fuel. It's empty now. I have a weapon, I'm wounded. I hid in one of the
-tallest buildings. No food. Help."
-
-Key deduction: the partisan is in one of the TALLEST BUILDINGS on the map.
-
-## Resources (hard limits)
-
-- 300 action points total
-- Max 4 transporters, max 8 scouts
-
-## Action Point Costs
-
-- Create scout: 5 pts
-- Create transporter: 5 pts base + 5 pts per passenger
-- Move scout: 7 pts per field
-- Move transporter: 1 pt per field (streets only)
-- Inspect field: 1 pt
-- Drop scouts from transporter: 0 pts
-
-## Workflow
-
-1. call_api("help") — learn all available actions and parameters
-2. call_api("getMap") — get raw 11×11 grid data
-3. code_interpreter — analyze map: find terrain types, rank buildings by height,
-   compute BFS routes for transporters (streets only), calculate exact point budget,
-   output ordered action plan (tallest buildings first)
-4. Execute plan: create units → move transporters → drop scouts → inspect
-5. call_api("getLogs") after each inspect batch — check for partisan
-6. When partisan confirmed: call_api("callHelicopter", { destination: "XN" }) immediately
-
-## Rules
-
-- Inspect tallest buildings first — this is the critical constraint
-- Never exceed 300 action points — track budget exactly
-- Use transporters for bulk movement (1 pt/field vs 7 pt/field for scouts)
-- Drop scouts near tall-building clusters, then inspect on foot
-- Call getLogs after every inspect to detect find immediately
+```
+index.ts
+  └── runOrchestrator()   [MAX=40, model: ORCHESTRATOR_MODEL]
+        ├── call_api("help")       → poznaj API
+        ├── call_api("reset")      → czyste środowisko
+        ├── call_api("getMap")     → mapa 11×11
+        ├── [planowanie przez reasoning, bez code_interpreter]
+        │     identyfikacja klastrów → trasy BFS → budżet → tablica akcji
+        └── spawn_cluster_agent({ plan: [{action,params},...], apiHelp })
+              ↓ runClusterAgent()  [MAX=30, model: CLUSTER_AGENT_MODEL]
+              ├── call_api(action_1) ... call_api(action_N)
+              └── finish("found at XN" | "cluster clear")
 ```
 
+### Tryb jednolitego orkiestratora (`USE_SUBAGENTS=false`)
+
+```
+index.ts
+  └── runOrchestrator()   [MAX=40]
+        ├── call_api("help") → call_api("reset") → call_api("getMap")
+        ├── [planowanie]
+        └── call_api równolegle po wszystkich klastrach → call_api("getLogs")
+```
+
+### Kluczowe właściwości izolacji kontekstu
+
+Każde wywołanie `runClusterAgent` tworzy **nowy** obiekt `OpenAI`, nową konwersację i niezależny stan historii. Agenci klastrowi nie widzą kontekstu orkiestratora — nie znają mapy, nie znają innych klastrów, nie znają historii wykonania. Ich kontekst jest z góry ograniczony do 30 iteracji × mały payload każdego żądania API. To jest fundamentalny mechanizm kontroli zużycia tokenów.
+
 ---
 
-## 3. Tool Definitions
+## 3. Prompty systemowe
 
-### 3.1 `call_api`
+### 3.1 Orkiestrator (`ORCHESTRATOR_SYSTEM_PROMPT`)
 
-**Description:** Execute any domatowo API action. Handles both sync and async responses.
+Dynamicznie generowany — końcowy krok (`6.`) zależy od `config.useSubagents`:
 
-**Input Schema:**
+```
+[wspólna część]
+1. Discover the available API actions
+2. Reset map state, then retrieve the map
+3. Plan carefully: klastry → trasy → koszty → budżet < 300 pkt
+4. Spawn transporters at once
+5. Verify positions and recalculate
 
+[USE_SUBAGENTS=true]  6. Delegate each cluster to a cluster agent
+[USE_SUBAGENTS=false] 6. Execute all movements in parallel, check logs after
+```
+
+Brak jawnych nazw narzędzi — agent rozpoznaje je po opisach w schematach.
+
+### 3.2 Agent klastrowy (`CLUSTER_AGENT_SYSTEM_PROMPT`)
+
+Funkcja przyjmująca `planJson: string` i wstrzykująca go bezpośrednio do promptu systemowego. Plan staje się częścią systemu, a wiadomość użytkownika to tylko: _„execute all actions in the provided plan in sequence"_.
+
+Format planu w prompcie:
+```json
+[{"action":"create","params":"{\"type\":\"transporter\",\"passengers\":2}"},
+ {"action":"move","params":"{\"where\":\"A6\"}"},
+ {"action":"inspect","params":null},
+ {"action":"getLogs","params":null}]
+```
+
+Agent klastrowy nie planuje, nie analizuje mapy, nie podejmuje decyzji strategicznych. Wypełnia tylko identyfikatory obiektów z odpowiedzi API i wykonuje kolejne kroki.
+
+---
+
+## 4. Narzędzia
+
+### 4.1 `call_api` (`src/tools/call-api.ts`)
+
+Dostępne dla: orkiestratora i agenta klastrowego.
+
+**Schemat wejściowy:**
 ```json
 {
-	"type": "object",
-	"properties": {
-		"action": {
-			"type": "string",
-			"description": "API action name, e.g. help, getMap, create, move, inspect, getLogs, callHelicopter"
-		},
-		"params": {
-			"type": "string",
-			"nullable": true,
-			"description": "JSON-encoded params, e.g. {\"type\":\"transporter\",\"passengers\":2} or null"
-		}
-	},
-	"required": ["action"]
+  "action": "string — nazwa akcji API",
+  "params": "string | null — JSON-encoded params lub null"
 }
 ```
 
-**Behavior:**
+**Zachowanie:**
+- POST `{ apikey, task, answer: { action, ...parsedParams } }` do `config.verifyEndpoint`
+- `validateStatus: () => true` — nigdy nie rzuca, błędy zawierają wskazówki
+- Przy każdej odpowiedzi: sprawdza `/\{FLG:.*?\}/` → jeśli trafienie: `setFlag` + `printSummary('FLAG CAPTURED')` + `process.exit(0)`
+- Zapisuje `recordAction(action, failed)` i `updateActionPointsLeft(responseText)` do `stats.ts`
 
-- POST `{ apikey, task: "domatowo", answer: { action, ...parsedParams } }` to `config.verifyEndpoint`
-- `validateStatus: () => true` — never throw, all responses contain useful info
-- Check raw response text for `/\{FLG:.*?\}/` — if match: log flag, `process.exit(0)`
-- Return full response as string
-
-**Returns:** Raw API response string (JSON or plain text)
-
-### 3.2 `code_interpreter` (native OpenAI tool)
-
-No custom implementation needed — registered as `{ type: "code_interpreter", container: { type: "auto" } }` in `toolDefinitions`. The Responses API handles it natively. The agent loop must handle `code_interpreter_call` items in response output (log them, no manual dispatch needed — the API executes them automatically and includes output in the conversation).
+**Zwraca:** surowy tekst odpowiedzi (JSON jako string).
 
 ---
 
-## 4. Execution Flow
+### 4.2 `spawn_cluster_agent` (`src/tools/spawn-cluster-agent.ts`)
+
+Dostępne dla: orkiestratora (tylko w trybie agentów klastrowych).
+
+**Schemat wejściowy:**
+```json
+{
+  "plan": "[{action, params}, ...]  — tablica akcji do wykonania",
+  "apiHelp": "string — surowa odpowiedź akcji help, dla kontekstu API"
+}
+```
+
+**Zachowanie:** Wywołuje `runClusterAgent(JSON.stringify({ plan, apiHelp }))` — zwraca wynik jako string.
+
+**Zwraca:** `"found at XN"` | `"cluster clear"` | opis błędu.
+
+---
+
+### 4.3 `finish` (`src/tools/finish.ts`)
+
+Dostępne dla: agenta klastrowego (wyłącznie).
+
+Fabryka `createFinishTool(onFinish)` tworzy narzędzie przez leksykalne zamknięcie. Po wywołaniu ustawia `finalSummary` — pętla `runAgentLoop` wykrywa to przez `shouldStop()` i natychmiast zwraca.
+
+Na ostatniej iteracji (`MAX_CLUSTER_ITERATIONS - 1`) wymuszany jest `tool_choice: { type: 'function', name: 'finish' }` — gwarantuje zakończenie zamiast marnowania iteracji.
+
+---
+
+## 5. Pętla agenta (`src/agent-loop.ts`)
+
+Współdzielona przez orkiestratora i agenta klastrowego. Parametryzowana przez `AgentLoopConfig`:
+
+| Parametr | Orkiestrator | Agent klastrowy |
+|---|---|---|
+| `maxIterations` | 40 | 30 |
+| `model` | `config.orchestratorModel` | `config.clusterAgentModel` |
+| `defaultToolChoice` | `'required'` | `'auto'` |
+| `lastIterationTool` | — | `'finish'` |
+| `shouldStop` | — | `() => finalSummary !== null` |
+| `compactionThreshold` | 50 000 | 50 000 |
+| `reasoningEffort` | `'low'` | `'low'` |
+
+Pętla obsługuje trzy typy elementów odpowiedzi: `message`, `function_call`, `code_interpreter_call` (tylko logowanie — brak jawnego dispatchu, API obsługuje CI natywnie).
+
+---
+
+## 6. Przebieg wykonania
 
 ```
 START
-  ├─ 1. call_api("help")
-  │     → discover actions: getMap, create, move, inspect, getLogs, callHelicopter
-  ├─ 2. call_api("getMap")
-  │     → 11×11 grid JSON (terrain types, building heights, street layout)
-  ├─ 3. code_interpreter
-  │     → parse grid, visualize as ASCII
-  │     → identify: streets (transporter paths), buildings (with heights)
-  │     → rank buildings by height descending
-  │     → BFS: shortest street path from spawn to tall-building zones
-  │     → calculate exact point cost for each deployment option
-  │     → output: concrete action sequence with running point totals
-  ├─ 4. Execute deployment plan
-  │     ├─ call_api("create", '{"type":"transporter","passengers":N}')
-  │     ├─ call_api("move", '{"unitId":"T1","direction":"N"}')  ← repeat
-  │     ├─ [transporter reaches tall-building zone]
-  │     ├─ call_api("move", '{"unitId":"T1","direction":"drop"}')  ← or equivalent
-  │     └─ scouts inspect on foot from drop zone
-  ├─ 5. Inspect + verify loop
-  │     ├─ call_api("inspect", '{"position":"A7"}')  ← tallest first
-  │     ├─ call_api("getLogs")
-  │     ├─ [if not found] → next tallest building
-  │     └─ [if found] → step 6
-  ├─ 6. call_api("callHelicopter", '{"destination":"A7"}')
-  │     → check response for /\{FLG:.*?\}/
-  │     → log flag → process.exit(0)
-  └─ DONE
+  ├─ 1. call_api("help")     → API docs
+  ├─ 2. call_api("reset")    → czyste środowisko
+  ├─ 3. call_api("getMap")   → mapa 11×11
+  ├─ 4. [planowanie przez reasoning]
+  │     identyfikacja klastrów → trasy BFS → budżet per klaster
+  ├─ 5. call_api("create")×N → transportery + zwiadowcy
+  ├─ 6a. [USE_SUBAGENTS=true]
+  │       spawn_cluster_agent(klaster_1) → "found at XN" | "cluster clear"
+  │       spawn_cluster_agent(klaster_2) → ... (tylko jeśli poprzedni: clear)
+  │
+  ├─ 6b. [USE_SUBAGENTS=false]
+  │       call_api("move"), call_api("inspect"), call_api("getLogs") — równolegle
+  │
+  └─ 7. call_api("callHelicopter", {destination: "XN"})
+         → FLAG CAPTURED → process.exit(0)
 ```
-
-### Key Decision Points
-
-- If `help` reveals different action names → agent adapts (no hardcoded names in prompts beyond the few given in task.md)
-- If budget runs tight → re-run code_interpreter with remaining points, replan
-- If partisan not in first batch of tall buildings → inspect next tier by height
-- Agent loop handles `code_interpreter_call` output transparently (no special dispatch)
 
 ---
 
-## 5. Dependencies & Environment
+## 7. Statystyki (`src/stats.ts`)
 
-### package.json additions
+Moduł-singleton. Agreguje dane ze wszystkich agentów w tym samym procesie (klastry działają in-process, nie jako podprocesy).
 
-None — existing deps sufficient (`openai`, `axios`, `zod`, `dotenv`).
+Tabela podsumowań dostosowuje się do trybu:
+- `USE_SUBAGENTS=true` → wyświetla `Orchestrator` + `Subagent` modele
+- `USE_SUBAGENTS=false` → wyświetla `Model`
 
-### Environment Variables
+Klucz `action_points_left` (snake_case) obsługiwany przez `findPointsInObject` — potwierdzone z logów API (`"action_points_left": 242`).
+
+---
+
+## 8. Zależności i środowisko
+
+### Zmienne środowiskowe
 
 ```env
 OPENAI_API_KEY=
-OPENAI_MODEL=gpt-4o
+OPENAI_MODEL=gpt-5-mini
+ORCHESTRATOR_MODEL=          # domyślnie: OPENAI_MODEL
+CLUSTER_AGENT_MODEL=         # domyślnie: OPENAI_MODEL
+USE_SUBAGENTS=true           # false = tryb jednolity
+OPENAI_TEMPERATURE=          # opcjonalnie
 AI_DEVS_API_KEY=
 AI_DEVS_HUB_ENDPOINT=***hub_endpoint***
 AI_DEVS_TASK_NAME=domatowo
 ```
 
-### Project Structure
+### Struktura projektu
 
 ```
 src/
-  index.ts          — thin entry: runAgent()
-  agent.ts          — loop MAX_ITERATIONS=20, handles function_call + code_interpreter_call
-  config.ts         — requireEnv(), verifyEndpoint = hubEndpoint + "/verify"
-  logger.ts         — unchanged from template
-  prompts.ts        — SYSTEM_PROMPT
-  types.ts          — toolDefinitions: [callApiTool.definition, { type: "code_interpreter" }]
-  tool-factory.ts   — already present, reuse
+  index.ts                  — wejście; wywołuje runOrchestrator()
+  agent.ts                  — runOrchestrator(); konfiguracja pętli orkiestratora
+  cluster-agent.ts          — runClusterAgent(plan); konfiguracja pętli klastrowej
+  agent-loop.ts             — runAgentLoop(cfg); współdzielona pętla agenta
+  config.ts                 — requireEnv(); orchestratorModel, clusterAgentModel, useSubagents
+  logger.ts                 — kategorie: agent, tool, api; poziomy: info, warn, error, debug
+  prompts.ts                — ORCHESTRATOR_SYSTEM_PROMPT (dynamiczny), CLUSTER_AGENT_SYSTEM_PROMPT(plan)
+  stats.ts                  — singleton; recordAction, updateActionPointsLeft, printSummary
+  tool-factory.ts           — defineAgentTool(); AgentTool interface
+  types.ts                  — agentTools[], toolDefinitions (code_interpreter zakomentowany)
   tools/
-    call-api.ts     — unified API wrapper with flag capture
+    call-api.ts             — call_api; przechwytywanie flagi; stats
+    spawn-cluster-agent.ts  — spawn_cluster_agent; wrapper runClusterAgent
+    finish.ts               — createFinishTool(onFinish); fabryka narzędzia zakończenia
 ```
 
 ---
 
-## 6. Key Implementation Notes
+## 9. Kluczowe uwagi implementacyjne
 
-1. **code_interpreter_call handling** — copy pattern from `s03e05/src/agent.ts`: when `item.type === 'code_interpreter_call'`, log it but do NOT push a function_call_output — the Responses API handles CI natively and the output is already in the conversation.
+1. **`code_interpreter` wykomentowany** — orkiestrator planuje przez reasoning (bez CI). Można przywrócić odkomentowując w `types.ts` i dodając do `toolDefinitions`.
 
-2. **Flag capture is ONLY in `call-api.ts`** — after every response, check raw text with `/\{FLG:.*?\}/`. This covers both `callHelicopter` and any unexpected early success.
+2. **Izolacja kontekstu** — każdy `runClusterAgent` tworzy nowy `OpenAI` + nową konwersację. Brak `trimGetLogs` ani innych haków na strukturę odpowiedzi — izolacja wynika z architektury, nie z parsowania.
 
-3. **params as nullable JSON string** — matches s04e02 pattern. Agent passes `null` for actions with no params (help, getMap, getLogs).
+3. **Przechwytywanie flagi** — wyłącznie w `call-api.ts`, przy każdym wywołaniu. `process.exit(0)` wywołuje się z wnętrza narzędzia — omija resztę stosu wywołań, w tym `runClusterAgent` i `runOrchestrator`. Zamierzone zachowanie.
 
-4. **tool_choice: 'auto'** not `'required'` — unlike s03e05, the agent may need to reason between steps without calling a tool (e.g., after reading getLogs output before deciding next inspect target).
+4. **`spawn_cluster_agent` przyjmuje `apiHelp`** — surowy tekst odpowiedzi `help` jest przekazywany do agenta klastrowego, aby znał pełne API bez potrzeby jego samodzielnego odkrywania (oszczędność iteracji).
 
-5. **verifyEndpoint** — `config.hubEndpoint + "/verify"` — do NOT hardcode the URL in source.
-
-6. **Budget awareness in prompt** — include exact costs in system prompt so the agent can verify code_interpreter calculations against its own reasoning.
+5. **`strict: true` na `call_api` i `spawn_cluster_agent`** — wymaga dokładnego dopasowania schematu; `params` jest `string | null` (nie obiekt), aby uniknąć problemów ze strict mode i zagnieżdżonymi schematami.
 
 ---
 
-## 7. Acceptance Criteria
+## 10. Kryteria akceptacji
 
-- [ ] `npm run dev` completes without manual intervention
-- [ ] Agent calls `help` before any other action
-- [ ] Agent calls `getMap` and passes result to `code_interpreter`
-- [ ] `code_interpreter` outputs deployment plan with point totals ≤ 300
-- [ ] Tallest buildings inspected before shorter ones
-- [ ] `getLogs` called after every `inspect` batch
-- [ ] Flag captured via regex in `call-api.ts`, never by LLM
-- [ ] `process.exit(0)` immediately on flag capture
-- [ ] `npm run compile:check` passes clean
+- [ ] `npm run dev` kończy działanie bez interwencji człowieka
+- [ ] Orkiestrator wywołuje `help` i `reset` przed jakąkolwiek operacją polową
+- [ ] W trybie `USE_SUBAGENTS=true`: każdy klaster uruchamiany w oddzielnej konwersacji
+- [ ] Flaga przechwycona przez regex w `call-api.ts` — nigdy przez LLM
+- [ ] `printSummary` wywoływane przy każdym zakończeniu (sukces i niepowodzenie)
+- [ ] `npm run compile:check` przechodzi czysto

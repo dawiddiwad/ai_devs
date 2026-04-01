@@ -7,5 +7,5 @@ export const agentTools: AgentTool[] = [callApiTool, spawnClusterAgentTool]
 
 export const toolDefinitions = [
 	...agentTools.map((t) => t.definition),
-	{ type: 'code_interpreter', container: { type: 'auto' } },
+	// { type: 'code_interpreter', container: { type: 'auto' } },
 ] satisfies Tool[]

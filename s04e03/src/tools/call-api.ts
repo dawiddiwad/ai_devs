@@ -9,20 +9,12 @@ const FLAG_REGEX = /\{FLG:.*?\}/
 
 export const callApiTool = defineAgentTool({
 	name: 'call_api',
-	description:
-		'Execute any domatowo API action. Use action="help" to discover all available actions. Use action="getMap" to get the 11x11 grid. Other actions: create, move, inspect, getLogs, callHelicopter.',
+	description: 'Execute a game API action. Pass the action name and JSON-encoded params, or null for no params.',
 	schema: z.object({
-		action: z
-			.string()
-			.describe('API action name, e.g. help, getMap, create, move, inspect, getLogs, callHelicopter'),
-		params: z
-			.string()
-			.nullable()
-			.describe(
-				'JSON-encoded params object, e.g. {"type":"transporter","passengers":2} or {"position":"A7"}. Pass null if no params needed.'
-			),
+		action: z.string().describe('API action name, e.g. help, callHelicopter'),
+		params: z.string().nullable().describe('JSON-encoded params object, e.g. {"position":"A7"}'),
 	}),
-	strict: false,
+	strict: true,
 	handler: async ({ action, params }) => {
 		const parsedParams: Record<string, unknown> = params ? (JSON.parse(params) as Record<string, unknown>) : {}
 

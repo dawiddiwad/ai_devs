@@ -25,6 +25,7 @@ export const config = {
 	openaiModel: baseModel,
 	orchestratorModel: process.env['ORCHESTRATOR_MODEL'] || baseModel,
 	clusterAgentModel: process.env['CLUSTER_AGENT_MODEL'] || baseModel,
+	useSubagents: process.env['USE_SUBAGENTS'] === 'true',
 	openaiTemperature: process.env['OPENAI_TEMPERATURE'] ? parseFloat(process.env['OPENAI_TEMPERATURE']) : undefined,
 	aiDevsApiKey: requireEnv('AI_DEVS_API_KEY'),
 	verifyEndpoint: `${requireEnv('AI_DEVS_HUB_ENDPOINT')}/verify`,
