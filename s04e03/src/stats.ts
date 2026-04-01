@@ -61,6 +61,7 @@ export function updateActionPointsLeft(responseText: string): void {
 function findPointsInObject(obj: unknown, depth = 0): number | null {
 	if (depth > 4 || obj === null || typeof obj !== 'object') return null
 	const pointKeys = [
+		'action_points_left',
 		'actionPointsLeft',
 		'pointsLeft',
 		'points_left',

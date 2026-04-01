@@ -17,10 +17,14 @@ function requireEnv(name: string): string {
  * This centralizes configuration management and allows for easy access to settings like API keys, model names, and endpoint URLs.
  * The config object can be extended in the future to include additional settings as needed.
  */
+const baseModel = process.env['OPENAI_MODEL'] || 'gpt-5-mini'
+
 export const config = {
 	openaiBaseUrl: process.env['OPENAI_BASE_URL'] || undefined,
 	openaiApiKey: requireEnv('OPENAI_API_KEY'),
-	openaiModel: process.env['OPENAI_MODEL'] || 'gpt-5-mini',
+	openaiModel: baseModel,
+	orchestratorModel: process.env['ORCHESTRATOR_MODEL'] || baseModel,
+	clusterAgentModel: process.env['CLUSTER_AGENT_MODEL'] || baseModel,
 	openaiTemperature: process.env['OPENAI_TEMPERATURE'] ? parseFloat(process.env['OPENAI_TEMPERATURE']) : undefined,
 	aiDevsApiKey: requireEnv('AI_DEVS_API_KEY'),
 	verifyEndpoint: `${requireEnv('AI_DEVS_HUB_ENDPOINT')}/verify`,

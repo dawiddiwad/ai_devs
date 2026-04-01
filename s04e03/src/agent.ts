@@ -2,13 +2,13 @@ import OpenAI from 'openai'
 import type { ResponseInput } from 'openai/resources/responses/responses'
 import { config } from './config'
 import { logger } from './logger'
-import { SYSTEM_PROMPT, USER_PROMPT } from './prompts'
+import { ORCHESTRATOR_SYSTEM_PROMPT, ORCHESTRATOR_USER_PROMPT } from './prompts'
 import { agentTools, toolDefinitions } from './types'
 import { incrementIterations, printSummary } from './stats'
 
-const MAX_ITERATIONS = 40
+const MAX_ITERATIONS = 20
 
-export async function runAgent(): Promise<void> {
+export async function runOrchestrator(): Promise<void> {
 	const client = new OpenAI({
 		apiKey: config.openaiApiKey,
 		baseURL: config.openaiBaseUrl,
@@ -16,25 +16,25 @@ export async function runAgent(): Promise<void> {
 
 	const conversation = await client.conversations.create({
 		items: [
-			{ role: 'system', content: SYSTEM_PROMPT },
-			{ role: 'user', content: USER_PROMPT },
+			{ role: 'system', content: ORCHESTRATOR_SYSTEM_PROMPT },
+			{ role: 'user', content: ORCHESTRATOR_USER_PROMPT },
 		],
 	})
 
 	let inputMessages: ResponseInput = []
 	for (let i = 0; i < MAX_ITERATIONS; i++) {
 		incrementIterations()
-		logger.agent('info', `Iteration ${i + 1}/${MAX_ITERATIONS}`)
+		logger.agent('info', `Orchestrator iteration ${i + 1}/${MAX_ITERATIONS}`)
 
 		const response = await client.responses.create({
-			model: config.openaiModel,
+			model: config.orchestratorModel,
 			conversation: conversation.id,
 			tools: toolDefinitions,
 			tool_choice: 'required',
 			temperature: config.openaiTemperature,
 			input: inputMessages,
 			reasoning: {
-				effort: 'high',
+				effort: 'low',
 			},
 			context_management: [{ type: 'compaction', compact_threshold: 100000 }],
 		})
@@ -42,7 +42,7 @@ export async function runAgent(): Promise<void> {
 		inputMessages = []
 		for (const item of response.output) {
 			if (item.type === 'message') {
-				logger.agent('info', 'Agent message', { content: item.content })
+				logger.agent('info', 'Orchestrator message', { content: item.content })
 			}
 			if (item.type === 'code_interpreter_call') {
 				logger.tool('info', 'Code interpreter call', { codeLength: item.code?.length })
@@ -66,7 +66,7 @@ export async function runAgent(): Promise<void> {
 		}
 	}
 
-	logger.agent('error', 'Max iterations reached without capturing flag')
+	logger.agent('error', 'Orchestrator max iterations reached without capturing flag')
 	printSummary('MAX ITERATIONS REACHED')
 	process.exit(1)
 }

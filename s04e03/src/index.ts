@@ -1,10 +1,10 @@
 import { config } from './config'
 import { logger } from './logger'
-import { runAgent } from './agent'
+import { runOrchestrator } from './agent'
 
 async function main() {
 	logger.agent('info', 'Starting task', { task: config.taskName })
-	await runAgent()
+	await runOrchestrator()
 }
 
 main().catch((error) => {
