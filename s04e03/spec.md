@@ -8,12 +8,12 @@ Misja ratunkowa w zbombardowanym Domatowie. Na podstawie przechwyconego sygnału
 
 ### Hardcoded Inputs / Initial Data
 
-| Field | Value |
-|---|---|
-| Task name | `domatowo` |
+| Field           | Value                                              |
+| --------------- | -------------------------------------------------- |
+| Task name       | `domatowo`                                         |
 | Verify endpoint | `config.verifyEndpoint` (`HUB_ENDPOINT + /verify`) |
-| API key | `config.aiDevsApiKey` |
-| Starting action | `help` → autonomously discover all actions |
+| API key         | `config.aiDevsApiKey`                              |
+| Starting action | `help` → autonomously discover all actions         |
 
 ### Final Deliverable
 
@@ -38,10 +38,12 @@ tallest buildings. No food. Help."
 Key deduction: the partisan is in one of the TALLEST BUILDINGS on the map.
 
 ## Resources (hard limits)
+
 - 300 action points total
 - Max 4 transporters, max 8 scouts
 
 ## Action Point Costs
+
 - Create scout: 5 pts
 - Create transporter: 5 pts base + 5 pts per passenger
 - Move scout: 7 pts per field
@@ -50,6 +52,7 @@ Key deduction: the partisan is in one of the TALLEST BUILDINGS on the map.
 - Drop scouts from transporter: 0 pts
 
 ## Workflow
+
 1. call_api("help") — learn all available actions and parameters
 2. call_api("getMap") — get raw 11×11 grid data
 3. code_interpreter — analyze map: find terrain types, rank buildings by height,
@@ -60,6 +63,7 @@ Key deduction: the partisan is in one of the TALLEST BUILDINGS on the map.
 6. When partisan confirmed: call_api("callHelicopter", { destination: "XN" }) immediately
 
 ## Rules
+
 - Inspect tallest buildings first — this is the critical constraint
 - Never exceed 300 action points — track budget exactly
 - Use transporters for bulk movement (1 pt/field vs 7 pt/field for scouts)
@@ -79,23 +83,24 @@ Key deduction: the partisan is in one of the TALLEST BUILDINGS on the map.
 
 ```json
 {
-  "type": "object",
-  "properties": {
-    "action": {
-      "type": "string",
-      "description": "API action name, e.g. help, getMap, create, move, inspect, getLogs, callHelicopter"
-    },
-    "params": {
-      "type": "string",
-      "nullable": true,
-      "description": "JSON-encoded params, e.g. {\"type\":\"transporter\",\"passengers\":2} or null"
-    }
-  },
-  "required": ["action"]
+	"type": "object",
+	"properties": {
+		"action": {
+			"type": "string",
+			"description": "API action name, e.g. help, getMap, create, move, inspect, getLogs, callHelicopter"
+		},
+		"params": {
+			"type": "string",
+			"nullable": true,
+			"description": "JSON-encoded params, e.g. {\"type\":\"transporter\",\"passengers\":2} or null"
+		}
+	},
+	"required": ["action"]
 }
 ```
 
 **Behavior:**
+
 - POST `{ apikey, task: "domatowo", answer: { action, ...parsedParams } }` to `config.verifyEndpoint`
 - `validateStatus: () => true` — never throw, all responses contain useful info
 - Check raw response text for `/\{FLG:.*?\}/` — if match: log flag, `process.exit(0)`

@@ -1,0 +1,145 @@
+import { config } from './config'
+
+interface ActionStat {
+	total: number
+	failed: number
+}
+
+interface RunStats {
+	startTime: number
+	iterations: number
+	actionCounts: Record<string, ActionStat>
+	actionPointsLeft: number | null
+	flagValue: string | null
+}
+
+const stats: RunStats = {
+	startTime: Date.now(),
+	iterations: 0,
+	actionCounts: {},
+	actionPointsLeft: null,
+	flagValue: null,
+}
+
+export function recordAction(action: string, failed = false): void {
+	if (!stats.actionCounts[action]) {
+		stats.actionCounts[action] = { total: 0, failed: 0 }
+	}
+	stats.actionCounts[action].total++
+	if (failed) stats.actionCounts[action].failed++
+}
+
+export function updateActionPointsLeft(responseText: string): void {
+	// Try JSON parse first — walk all numeric values for point-like keys
+	try {
+		const parsed = JSON.parse(responseText) as unknown
+		const found = findPointsInObject(parsed)
+		if (found !== null) {
+			stats.actionPointsLeft = found
+			return
+		}
+	} catch {
+		// not JSON
+	}
+
+	// Fallback: regex scan for common patterns in plain text
+	const patterns = [
+		/action\s*points?\s*left[^0-9]*(\d+)/i,
+		/points?\s*left[^0-9]*(\d+)/i,
+		/remaining\s*points?[^0-9]*(\d+)/i,
+		/"points?":\s*(\d+)/i,
+	]
+	for (const re of patterns) {
+		const m = responseText.match(re)
+		if (m) {
+			stats.actionPointsLeft = parseInt(m[1], 10)
+			return
+		}
+	}
+}
+
+function findPointsInObject(obj: unknown, depth = 0): number | null {
+	if (depth > 4 || obj === null || typeof obj !== 'object') return null
+	const pointKeys = [
+		'actionPointsLeft',
+		'pointsLeft',
+		'points_left',
+		'remainingPoints',
+		'remaining_points',
+		'pointsRemaining',
+		'ap',
+		'apLeft',
+		'ap_left',
+		'points',
+		'remainingAP',
+	]
+	const rec = obj as Record<string, unknown>
+	for (const key of pointKeys) {
+		if (typeof rec[key] === 'number') return rec[key] as number
+	}
+	for (const val of Object.values(rec)) {
+		const found = findPointsInObject(val, depth + 1)
+		if (found !== null) return found
+	}
+	return null
+}
+
+export function incrementIterations(): void {
+	stats.iterations++
+}
+
+export function setFlag(flag: string): void {
+	stats.flagValue = flag
+}
+
+export function printSummary(result: 'FLAG CAPTURED' | 'MAX ITERATIONS REACHED'): void {
+	const elapsedMs = Date.now() - stats.startTime
+	const elapsedSec = (elapsedMs / 1000).toFixed(2)
+	const totalActions = Object.values(stats.actionCounts).reduce((sum, s) => sum + s.total, 0)
+
+	const metricRows: [string, string][] = [
+		['Model', config.openaiModel],
+		['Action Points Left', stats.actionPointsLeft !== null ? String(stats.actionPointsLeft) : 'unknown'],
+		['Total Runtime', `${elapsedSec} seconds`],
+		['Agent Iterations', String(stats.iterations)],
+		['Total API Actions', String(totalActions)],
+		['Final Result', result],
+		...(stats.flagValue ? ([['Flag Value', stats.flagValue]] as [string, string][]) : []),
+	]
+
+	const actionRows: [string, string][] = Object.entries(stats.actionCounts)
+		.sort((a, b) => b[1].total - a[1].total)
+		.map(([action, s]) => {
+			const countStr =
+				s.failed > 0 ? `${s.total} (${s.failed} failed, ${s.total - s.failed} ok)` : String(s.total)
+			return [action, countStr]
+		})
+
+	printCombinedTable(['Metric', 'Value'], metricRows, ['Action Breakdown', 'Count'], actionRows)
+}
+
+function printCombinedTable(
+	headers1: [string, string],
+	rows1: [string, string][],
+	headers2: [string, string],
+	rows2: [string, string][]
+): void {
+	const allRows = [...rows1, [headers2[0], headers2[1]] as [string, string], ...rows2]
+	const allHeaders = [headers1, headers2]
+
+	const col1 = Math.max(...allHeaders.map((h) => h[0].length), ...allRows.map((r) => r[0].length)) + 2
+	const col2 = Math.max(...allHeaders.map((h) => h[1].length), ...allRows.map((r) => r[1].length)) + 2
+
+	const divider = `+${'-'.repeat(col1 + 2)}+${'-'.repeat(col2 + 2)}+`
+	const row = (a: string, b: string) => `| ${a.padEnd(col1)} | ${b.padEnd(col2)} |`
+
+	console.log(divider)
+	console.log(row(headers1[0], headers1[1]))
+	console.log(divider)
+	for (const [a, b] of rows1) console.log(row(a, b))
+	console.log(divider)
+	console.log(row(headers2[0], headers2[1]))
+	console.log(divider)
+	for (const [a, b] of rows2) console.log(row(a, b))
+	console.log(divider)
+}
