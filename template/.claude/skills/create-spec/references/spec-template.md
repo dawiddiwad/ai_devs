@@ -92,11 +92,9 @@ START
 
 ```
 src/
-  index.ts
-  agent.ts
-  config.ts
-  logger.ts
-  tools/
+  index.ts      # Thin entry using @ai-devs/core runAgent()
+  prompts.ts    # System/user prompts
+  tools/        # One file per tool + index.ts registry
 ```
 
 ---

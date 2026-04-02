@@ -1,32 +1,30 @@
 ---
-description: 'Use when implementing OpenAI Responses API calls, agent loops, tool-calling agents, or defineTool bundled tools.'
+description: 'Use when implementing OpenAI API calls, agent loops, tool-calling agents, or defineAgentTool bundled tools.'
 paths:
-  - '**/src/agent.ts'
-  - '**/src/tools.ts'
   - '**/src/tools/**'
-  - '**/src/tool-factory.ts'
-  - '**/src/types.ts'
+  - '**/src/index.ts'
+  - '**/src/prompts.ts'
 ---
 
-# OpenAI SDK Patterns (v6 · Responses API)
+# OpenAI SDK Patterns (v6 · @ai-devs/core)
 
 ## Imports
 
+All utilities come from `@ai-devs/core`:
+
 ```ts
-import OpenAI from 'openai'
-import type { FunctionTool, Tool, ResponseInput } from 'openai/resources/responses/responses'
+import { createConfig, logger, runAgent, defineAgentTool, verifyAnswer, createOpenAIClient } from '@ai-devs/core'
+import type { AgentTool, AgentConfig } from '@ai-devs/core'
 import { z } from 'zod/v4'
 ```
 
-## Bundled Tool Pattern
+Do NOT import OpenAI directly unless building a custom agent loop. Do NOT create local tool-factory.ts, config.ts, or logger.ts.
 
-`src/tool-factory.ts` is part of the template — do not redefine it. It exports `defineTool()` (returns `AgentTool`) and the `AgentTool` interface. Use it directly.
-
-### Tool file (one per tool)
+## Tool Definition (one file per tool)
 
 ```ts
 import { z } from 'zod/v4'
-import { defineAgentTool } from '../tool-factory'
+import { defineAgentTool } from '@ai-devs/core'
 
 export const myTool = defineAgentTool({
 	name: 'my_tool',
@@ -35,79 +33,70 @@ export const myTool = defineAgentTool({
 		param: z.string().describe('Description of param'),
 	}),
 	handler: async ({ param }) => {
-		// fully typed args — no manual safeParse needed
 		return JSON.stringify({ result: param })
 	},
 })
 ```
 
-### types.ts — thin registry
+## Tool Registry (tools/index.ts)
 
 ```ts
-import { Tool } from 'openai/resources/responses/responses'
-import { AgentTool } from './tool-factory'
-import { myTool } from './tools/my-tool'
+import type { AgentTool } from '@ai-devs/core'
+import { verifyTool } from './verify.js'
+import { myTool } from './my-tool.js'
 
-export const agentTools: AgentTool[] = [myTool]
-
-export const toolDefinitions = [
-	...agentTools.map((t) => t.definition),
-	{ type: 'code_interpreter', container: { type: 'auto', memory_limit: '1g' } },
-] satisfies Tool[]
+export const tools: AgentTool[] = [verifyTool, myTool]
 ```
 
-## Agent Loop Pattern (Conversations + Responses API)
+## Agent Loop — Standard (via runAgent)
 
 ```ts
-const conversation = await client.conversations.create({
-	items: [
-		{ role: 'system', content: SYSTEM_PROMPT },
-		{ role: 'user', content: USER_PROMPT },
-	],
-})
+import { createConfig, runAgent } from '@ai-devs/core'
 
-let inputMessages: ResponseInput = []
-for (let i = 0; i < MAX_ITERATIONS; i++) {
-	const response = await client.responses.create({
-		model: config.openaiModel,
-		conversation: conversation.id,
-		tools: toolDefinitions,
-		tool_choice: 'required',
-		temperature: config.openaiTemperature,
-		input: inputMessages,
-		reasoning: { effort: config.openaiReasoningEffort },
-		context_management: [{ type: 'compaction', compact_threshold: 100000 }],
-	})
-	inputMessages = []
-	for (const item of response.output) {
-		if (item.type === 'message') {
-			logger.agent('info', 'Agent message', { content: item.content })
-		}
-		if (item.type === 'code_interpreter_call') {
-			logger.tool('info', 'Code interpreter call', { codeLength: item.code?.length })
-		}
-		if (item.type === 'function_call') {
-			logger.agent('info', `Tool call: ${item.name}`)
-			try {
-				const tool = agentTools.find((t) => t.definition.name === item.name)
-				const result = tool
-					? await tool.execute(JSON.parse(item.arguments))
-					: JSON.stringify({ error: `Unknown tool: ${item.name}` })
-				inputMessages.push({ type: 'function_call_output', call_id: item.call_id, output: result })
-			} catch (error) {
-				inputMessages.push({
-					type: 'function_call_output',
-					call_id: item.call_id,
-					output: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
-				})
-			}
-		}
-	}
-}
+const config = createConfig()
+
+await runAgent(config, {
+	api: 'responses',        // or 'completions'
+	tools,
+	systemPrompt: SYSTEM_PROMPT,
+	userPrompt: USER_PROMPT,
+	maxIterations: 20,       // default: 20
+	reasoning: { effort: 'medium' },  // responses API only
+	toolChoice: 'auto',      // 'auto' | 'required' | 'none'
+})
+```
+
+`runAgent` handles: conversation creation, tool dispatch, flag scanning, logging, and `process.exit(0)` on flag capture.
+
+## Agent Loop — Custom (escape hatch)
+
+For HTTP servers, multi-agent, or non-standard flows, import individual utilities:
+
+```ts
+import { createConfig, logger, createOpenAIClient, defineAgentTool } from '@ai-devs/core'
+
+const client = createOpenAIClient(config)
+// Wire your own conversation/responses loop
+```
+
+## Multi-Agent Pattern
+
+Nest `runAgent` calls with `exitOnFlag: false` for sub-agents:
+
+```ts
+const subResult = await runAgent(config, {
+	api: 'responses',
+	model: 'gpt-5-mini',
+	tools: subTools,
+	systemPrompt: SUB_PROMPT,
+	userPrompt: task,
+	exitOnFlag: false,
+})
+return subResult.finalMessage
 ```
 
 ## Error Handling
 
-- Tool errors: catch and return as JSON `{ error: message }` in tool response (never throw from executors)
-- API calls to verify: always use `validateStatus: () => true` to capture error feedback
+- Tool errors: catch and return as JSON `{ error: message }` (never throw from handlers)
+- API calls to verify: use `verifyAnswer()` from core — handles `validateStatus: () => true` automatically
 - Top-level: `main().catch(e => { logger.agent('error', '...', { error: e }); process.exit(1) })`

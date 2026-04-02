@@ -3,7 +3,7 @@
 		"target": "esnext",
 		"module": "nodenext",
 		"moduleResolution": "nodenext",
-		"lib": ["ESNext", "DOM"],
+		"lib": ["ESNext"],
 		"outDir": "./dist",
 		"rootDir": "./src",
 		"strict": true,
@@ -14,6 +14,6 @@
 		"declaration": true,
 		"types": ["node"]
 	},
-	"include": ["src/**/*", "config.ts"],
+	"include": ["src/**/*"],
 	"exclude": ["node_modules", "dist"]
 }

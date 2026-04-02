@@ -1,10 +1,6 @@
 import { z } from 'zod/v4'
 import type { FunctionTool } from 'openai/resources/responses/responses'
-
-export interface AgentTool {
-	definition: FunctionTool
-	execute: (args: unknown) => Promise<string>
-}
+import type { AgentTool } from './types.js'
 
 export function defineAgentTool<T extends z.ZodType>(toolConfig: {
 	name: string

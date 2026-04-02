@@ -6,7 +6,7 @@
 
 ## Stack & Style
 
-- TypeScript · OpenAI SDK v6 · Zod v4 · Axios · dotenv
+- TypeScript · OpenAI SDK v6 · Zod v4 · @ai-devs/core
 - English names · no semicolons · no inline comments
 - Self-explanatory code · SOLID principles · logical modules (never monolithic index.ts)
 
@@ -17,22 +17,45 @@ sXXeYY/
 ├── spec.md           # Implementation spec (source of truth)
 ├── .env              # Env vars (see .env.example)
 └── src/
-    ├── index.ts      # Thin entry point
-    ├── agent.ts      # Agent loop
-    ├── config.ts     # Centralized requireEnv() config
-    ├── logger.ts     # Structured logging (agent/tool/api)
-    ├── prompts.ts    # System prompts
-    ├── types.ts      # Zod schemas + TS types
-    └── tools/        # One file per tool
+    ├── index.ts      # Thin entry: import from @ai-devs/core, wire prompts+tools, run
+    ├── prompts.ts    # System/user prompts
+    └── tools/        # One file per tool using defineAgentTool from @ai-devs/core
+        ├── index.ts  # Tool registry array
+        └── verify.ts # Standard verify tool
 ```
+
+## Imports
+
+All from `@ai-devs/core`: `createConfig`, `logger`, `runAgent`, `defineAgentTool`, `verifyAnswer`, `captureFlag`, `createOpenAIClient`, `requireEnv`, `optionalEnv`
+
+Do NOT create local config.ts, logger.ts, or tool-factory.ts — these live in @ai-devs/core.
 
 ## Config
 
-All env vars via centralized `config.ts` with `requireEnv()`. Never inline `process.env` outside config.ts. See `template/src/config.ts` for reference.
+Use `createConfig()` for standard vars. Extend with spread for task-specific vars:
+```ts
+const config = { ...createConfig(), customVar: requireEnv('CUSTOM_VAR') }
+```
 
 ## Logging
 
-Three categories (`agent`, `tool`, `api`) × four levels (`info`, `warn`, `error`, `debug`). See `template/src/logger.ts` for reference.
+Same API: `logger.agent('info', 'message', { optional: 'context' })`
+Categories: `agent`, `tool`, `api` · Levels: `info`, `warn`, `error`, `debug`
+
+## Agent Runner
+
+Use `runAgent()` from @ai-devs/core — supports both `'responses'` and `'completions'` API modes:
+```ts
+await runAgent(config, {
+  api: 'responses',
+  tools,
+  systemPrompt: SYSTEM_PROMPT,
+  userPrompt: USER_PROMPT,
+  reasoning: { effort: 'low' },
+})
+```
+
+For custom agent behavior (HTTP servers, multi-agent), import individual utilities and wire your own loop.
 
 ## Security
 

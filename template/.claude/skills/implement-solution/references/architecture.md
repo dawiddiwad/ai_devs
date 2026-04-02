@@ -2,18 +2,27 @@
 
 ## Module Implementation Order
 
-config.ts → types.ts → logger.ts → tool-factory.ts → tools/ → prompts.ts → agent.ts → index.ts
+prompts.ts → tools/ → index.ts
+
+All infrastructure (config, logger, tool-factory, agent runner, verify) comes from `@ai-devs/core`.
 
 ## index.ts — Thin Entry Point
 
 ```ts
-import { config } from './config'
-import { logger } from './logger'
-import { runAgent } from './agent'
+import { createConfig, logger, runAgent } from '@ai-devs/core'
+import { SYSTEM_PROMPT, USER_PROMPT } from './prompts.js'
+import { tools } from './tools/index.js'
+
+const config = createConfig()
 
 async function main() {
 	logger.agent('info', 'Starting task', { task: config.taskName })
-	await runAgent()
+	await runAgent(config, {
+		api: 'responses',
+		tools,
+		systemPrompt: SYSTEM_PROMPT,
+		userPrompt: USER_PROMPT,
+	})
 }
 
 main().catch((error) => {
@@ -24,33 +33,20 @@ main().catch((error) => {
 })
 ```
 
-## config.ts — Centralized Config
+## prompts.ts — System & User Prompts
 
-Use `requireEnv()` for required vars, `process.env['X'] || default` for optional.
-Extend with task-specific vars as needed. Reference: `template/src/config.ts`.
+Export `SYSTEM_PROMPT` and `USER_PROMPT` as strings. Keep prompts here, not inline in index.ts.
 
-## logger.ts — Structured Logging
+## tools/ — One File Per Tool
 
-API: `logger.agent('info', 'message', { optional: 'context' })`
-Categories: `agent` (decisions), `tool` (execution), `api` (external calls).
-Reference: `template/src/logger.ts`.
-
-## agent.ts — Agent Loop
-
-Uses Responses API with stateful conversations:
-
-- Create conversation once with `client.conversations.create({ items: [system, user] })`
-- Each iteration: `client.responses.create({ conversation: id, input: inputMessages, tools, tool_choice: 'required' })`
-- Accept `MAX_ITERATIONS` constant (typically 15-30)
-- Process `response.output` items by type: `message`, `function_call`, `code_interpreter_call`
-- On tool error: catch and push `{ error: message }` as `function_call_output`
-
-## tool-factory.ts — Bundled Tool Utility
-
-Provides `defineTool()` — co-locates Zod schema, OpenAI function definition, and handler:
+Each file exports one `AgentTool` via `defineAgentTool()` from `@ai-devs/core`.
+`tools/index.ts` exports the `tools` array.
 
 ```ts
-export const myTool = defineTool({
+import { z } from 'zod/v4'
+import { defineAgentTool } from '@ai-devs/core'
+
+export const myTool = defineAgentTool({
 	name: 'my_tool',
 	description: '...',
 	schema: z.object({ param: z.string() }),
@@ -58,24 +54,52 @@ export const myTool = defineTool({
 })
 ```
 
-`z.toJSONSchema()` derives the OpenAI JSON schema from Zod (strip `$schema` key). Handler receives typed args — no manual `safeParse` needed.
-
-## tools/ — One File Per Tool
-
-Each file exports one `BoundTool` via `defineTool()`.
-`types.ts` exports `boundTools[]` and derives `toolDefinitions` from it.
-Agent dispatches by matching `item.name` against `boundTools` — no separate executor registry.
-
 ## Verify/Submit Tool
 
-- Always use `validateStatus: () => true` on axios POST
-- Parse response for flag with `FLAG_REGEX`
-- Return full response text even on HTTP errors — contains feedback
+Use `verifyAnswer()` from `@ai-devs/core` — handles POST, flag capture, exit automatically.
+See `template/src/tools/verify.ts` for the standard pattern.
+
+## runAgent() Options
+
+```ts
+await runAgent(config, {
+	api: 'responses',             // 'responses' | 'completions'
+	tools,                        // AgentTool[]
+	systemPrompt: SYSTEM_PROMPT,
+	userPrompt: USER_PROMPT,
+	maxIterations: 20,            // default: 20
+	model: 'gpt-5',              // overrides config.openaiModel
+	reasoning: { effort: 'high' }, // responses API only
+	toolChoice: 'auto',           // 'auto' | 'required' | 'none'
+	exitOnFlag: true,             // default: true
+	onToolCall: (name, args, result) => { ... },  // optional hook
+	onMessage: (content) => { ... },               // optional hook
+})
+```
+
+## Escape Hatch — Custom Agent Loops
+
+For HTTP servers, multi-agent orchestration, or batch pipelines, skip `runAgent` and import individual utilities:
+
+```ts
+import { createConfig, logger, createOpenAIClient, defineAgentTool, captureFlag } from '@ai-devs/core'
+```
+
+## Task-Specific Config
+
+Extend standard config with task-specific env vars:
+
+```ts
+import { createConfig, requireEnv } from '@ai-devs/core'
+const config = { ...createConfig(), okoUrl: requireEnv('OKO_URL') }
+```
 
 ## Common Anti-Patterns to Avoid
 
+- Creating local config.ts, logger.ts, or tool-factory.ts — use `@ai-devs/core`
 - `@types/axios` in devDeps — axios v1+ ships own types
 - Parallel tool execution via `Promise.all` — use sequential
 - Type narrowing via `as` casts in tool args — use Zod `.safeParse()`
 - Hardcoded package.json name from template — update per task
-- `import 'dotenv/config'` — use centralized `config.ts` instead
+- `import 'dotenv/config'` — use `createConfig()` instead
+- Building custom agent loops when `runAgent()` suffices

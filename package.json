@@ -1,0 +1,8 @@
+{
+  "name": "ai-devs-workspace",
+  "private": true,
+  "scripts": {
+    "build:core": "pnpm --filter @ai-devs/core build",
+    "dev:core": "pnpm --filter @ai-devs/core dev"
+  }
+}

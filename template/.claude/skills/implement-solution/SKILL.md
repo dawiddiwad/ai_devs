@@ -18,18 +18,19 @@ argument-hint: 'Provide task folder name (e.g. s03e04)'
 ## Procedure
 
 1. Read `spec.md` — this is the authoritative source. Follow it strictly.
-2. Read `template/` files for scaffold reference: [config.ts](../../template/src/config.ts), [logger.ts](../../template/src/logger.ts), [package.json](../../template/package.json)
+2. Read `packages/core/src/index.ts` for available exports from `@ai-devs/core`
 3. Review the [architecture patterns](./references/architecture.md) for established conventions
 4. Scaffold project structure if starting fresh (copy from template)
-5. Implement in order: config → types → tools → agent → index
+5. Implement in order: prompts → tools → index
 6. Run `npm run build` to verify — fix all errors before declaring done
 
 ## Rules
 
 - Follow spec.md to the letter — deviate only if there's a clear bug in the spec
-- Use patterns from prior solutions — see references for code patterns
+- Import all utilities from `@ai-devs/core` — do NOT create local config.ts, logger.ts, or tool-factory.ts
 - Every tool gets its own file in `tools/` directory
 - Validate tool args with Zod schemas
-- Config via `config.ts` — never inline `process.env`
-- Log agent decisions, tool calls, and API interactions
+- Config via `createConfig()` from core — never inline `process.env`
+- Log agent decisions, tool calls, and API interactions via `logger` from core
 - Handle errors gracefully — tools return error JSON, never throw to agent loop
+- Use `runAgent()` for standard agent loops — only build custom loops for non-standard flows
