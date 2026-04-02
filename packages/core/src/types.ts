@@ -15,6 +15,7 @@ export interface AgentConfig {
 	model?: string
 	temperature?: number
 	reasoning?: { effort: ReasoningEffort }
+	serviceTier: 'auto' | 'default' | 'flex' | 'scale' | 'priority' | null
 	toolChoice?: 'auto' | 'required' | 'none'
 	compactThreshold?: number
 	exitOnFlag?: boolean

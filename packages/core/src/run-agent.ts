@@ -61,6 +61,7 @@ async function runResponsesAgent(
 			context_management: [
 				{ type: 'compaction', compact_threshold: config.compactThreshold ?? 100000 },
 			],
+			service_tier: config.serviceTier
 		})
 
 		inputMessages = []
@@ -190,6 +191,7 @@ async function runCompletionsAgent(
 
 		if (!message.tool_calls?.length) {
 			logger.agent('info', 'No tool calls — agent finished')
+			logger.agent('info', 'Response', { content: JSON.stringify(response, null, 2) })
 			return { finalMessage: lastMessage, iterations: i + 1, flagCaptured }
 		}
 

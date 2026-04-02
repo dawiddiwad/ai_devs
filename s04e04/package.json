@@ -1,0 +1,37 @@
+{
+	"name": "s04e04",
+	"version": "1.0.0",
+	"description": "filesystem",
+	"license": "MIT",
+	"author": "Dawid Dobrowolski",
+	"type": "commonjs",
+	"main": "dist/index.js",
+	"scripts": {
+		"build": "npm run compile:check && npm run lint:check && npm run format:check && tsc",
+		"build:core": "pnpm --filter @ai-devs/core build",
+		"start": "npm run build && node dist/index.js",
+		"dev": "npx ts-node src/index.ts",
+		"compile:check": "npx tsc --noEmit",
+		"lint:check": "eslint .",
+		"lint:fix": "eslint . --fix",
+		"format:check": "prettier . --check",
+		"format:fix": "prettier . --write",
+		"install:dep": "pnpm --filter s04e04 install"
+	},
+	"dependencies": {
+		"@ai-devs/core": "workspace:*",
+		"adm-zip": "^0.5.17",
+		"zod": "^4.3.6"
+	},
+	"devDependencies": {
+		"@eslint/js": "^10.0.1",
+		"@types/adm-zip": "^0.5.8",
+		"@types/node": "^25.4.0",
+		"eslint": "^9.39.4",
+		"eslint-config-prettier": "^10.1.8",
+		"prettier": "^3.7.4",
+		"ts-node": "^10.9.2",
+		"typescript": "^5.9.3",
+		"typescript-eslint": "^8.56.1"
+	}
+}
