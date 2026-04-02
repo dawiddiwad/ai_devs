@@ -11,7 +11,7 @@ const multiAgentInstructions = () => {
 export const ORCHESTRATOR_SYSTEM_PROMPT = `You are coordinating a rescue operation in an 11x11 grid city puzzle.
 
 ## Mission
-Your job is to PLAN and DELEGATE the search for a hidden person sheltering in one of the tallest buildings.
+Your job is to search for a hidden person sheltering in one of the tallest buildings.
 Budget: 300 action points, 4 transporters, 8 scouts.
 
 ## Costs 
@@ -28,7 +28,7 @@ inspect = 1 pt
 3. Plan carefully:
    - Parse the map and identify all buildings ranked by height
    - Group tall buildings into spatial clusters (adjacent or nearby high-floor blocks)
-   - For each cluster: compute the BFS transporter route, list cells to inspect, calculate each inspections movements. Calculate cost of transporter creation + scout creation + moves + scout moves + inspections = total cluster cost
+   - For each cluster: compute the transporter route, list cells to inspect, calculate each inspections movements. Calculate cost of transporter creation + scout creation + moves + scout moves + inspections = total cluster cost
    - For all clusters: sum total cluster costs = total opearion cost < 300 pts. If cost > 300, replan and recalculate until within 300 pts budget.
 4. Spawn transporters at once,
 5. Verify their positions and recalculate any adjustments needed to the plan based on transporter deployment results

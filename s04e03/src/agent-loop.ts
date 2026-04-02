@@ -44,9 +44,12 @@ export async function runAgentLoop(cfg: AgentLoopConfig): Promise<string> {
 			input: inputMessages,
 			reasoning: { effort: cfg.reasoningEffort ?? 'none' },
 			context_management: [{ type: 'compaction', compact_threshold: cfg.compactionThreshold ?? 50000 }],
+			service_tier: 'flex',
 		})
 
 		inputMessages = []
+		logger.agent('info', `token usage: ${JSON.stringify(response.usage)}`)
+
 		for (const item of response.output) {
 			if (item.type === 'message') {
 				const text = item.content

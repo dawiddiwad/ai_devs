@@ -20,6 +20,8 @@ export async function runOrchestrator(): Promise<void> {
 		],
 	})
 
+	console.log(`available tools: ${toolDefinitions.map((t) => t.type).join(', ')}`)
+
 	await runAgentLoop({
 		client,
 		conversationId: conversation.id,
@@ -30,7 +32,7 @@ export async function runOrchestrator(): Promise<void> {
 		temperature: config.openaiTemperature,
 		logPrefix: 'Orchestrator',
 		defaultToolChoice: 'required',
-		compactionThreshold: 50_000,
+		compactionThreshold: 50000,
 		reasoningEffort: 'low',
 	})
 

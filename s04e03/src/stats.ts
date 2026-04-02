@@ -101,7 +101,7 @@ export function printSummary(result: 'FLAG CAPTURED' | 'MAX ITERATIONS REACHED')
 		metricRows.push(['Orchestrator', config.orchestratorModel])
 		metricRows.push(['Subagent', config.clusterAgentModel])
 	} else {
-		metricRows.push(['Model', config.openaiModel])
+		metricRows.push(['Model', config.orchestratorModel])
 	}
 	metricRows.push([
 		'Action Points Left',
