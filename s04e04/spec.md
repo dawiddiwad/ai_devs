@@ -1,51 +1,51 @@
-# Natanaaaaa? `filesystem`
+# Natanaaaaa? Czyli Cyber-Ontologia Plików `filesystem`
 
-## 1. Przegląd i Cel
+## 1. Przegląd i Cel Operacji
 
-### Streszczenie Zadania
+### Streszczenie Trudu
 
-Agent autonomicznie pobiera chaotyczne notatki Natana (archiwum ZIP), lokalnie wyodrębnia dane handlowe z plików strukturalnych, zapisuje wynik preprocessingu po stronie narzędzi i zostawia modelowi językowemu tylko złożenie brakujących nazw osób z krótkich wskazówek.
+Nasz automat, ów krzemowy analityk, zostaje zmuszony do zanurzenia się w gęstej entropii zapisków niejakiego Natana (spoczywających w cyfrowym sarkofagu zwanym archiwum ZIP). Zadaniem golema jest autonomiczna ekstrakcja owych handlowych danych z plików o budowie wpół-strukturalnej. Większość maszynowej pracy, polegającej na przetrawieniu tego informacyjnego zgiełku, odbywa się w trzewiach narzędzi lokalnych (preprocessingu). Elektronowemu mózgowi (modelowi językowemu) pozostawiono zaś zadanie natury iście dedukcyjnej: niczym wytrawny badacz kosmicznych anomalii, musi poskładać brakujące imiona i nazwiska, dysponując zaledwie ułomkami poszlak.
 
-### Dane Wejściowe
+### Parametry Brzegowe Rzeczywistości (Dane Wejściowe)
 
-| Pole                 | Wartość                                            |
-| -------------------- | -------------------------------------------------- |
-| Nazwa zadania        | `filesystem`                                       |
-| Endpoint weryfikacji | `config.verifyEndpoint` (`HUB_ENDPOINT + /verify`) |
-| URL notatek          | `HUB_ENDPOINT/dane/natan_notes.zip`                |
-| Podgląd filesystem   | `HUB_ENDPOINT/filesystem_preview.html`             |
+| Współrzędna Kosmiczna | Ekwiwalent Cyfrowy                                 |
+| --------------------- | -------------------------------------------------- |
+| Kryptonim misji       | `filesystem`                                       |
+| Ołtarz weryfikacji    | `config.verifyEndpoint` (`HUB_ENDPOINT + /verify`) |
+| Wektor notatek        | `HUB_ENDPOINT/dane/natan_notes.zip`                |
+| Teleskop struktury    | `HUB_ENDPOINT/filesystem_preview.html`             |
 
-### Produkt Finalny
+### Artefakt
 
-Flaga `{FLG:...}` zwrócona przez akcję `done` po pomyślnej weryfikacji struktury plików.
-
----
-
-## 2. Persona i Strategia Promptu
-
-### System Prompt
-
-Agent analityczny. Reguły: brak polskich znaków w nazwach plików/JSON, mianownik liczby pojedynczej dla towarów, transliteracja ą→a itp. Prompt wymusza użycie lokalnego preprocessingu, pracy na uchwycie `datasetId` i jednego narzędzia do finalnego submitu.
+Flaga Prawdy `{FLG:...}`, wyłoniona przez algorytm ostateczny `done` po bezbłędnej weryfikacji nowo uformowanej galaktyki plików.
 
 ---
 
-## 3. Definicje Narzędzi
+## 2. Prawa Robotyki i Strategia Intelektualna (Prompt)
 
-### 3.1 `download_notes`
+### Świadomość Systemowa
 
-**Opis:** Pobiera i rozpakowuje archiwum ZIP z notatkami Natana.
+Duch w maszynie, czyli Agent Analityczny. Reguły nakazane przez stwórcę są nieubłagane: obowiązuje kategoryczny zakaz stosowania znaków diakrytycznych (owej słowiańskiej fanaberii, gdzie ą musi ulec redukcji do a, niczym wymiary zwinięte w teorii strun), a także nakaz używania mianownika liczby pojedynczej dla wszelkich dóbr materialnych. Instrukcja operacyjna wymusza na sztucznej inteligencji oparcie się o lokalny aparat trawienny (preprocessing), manipulację na abstrakcyjnym uchwycie zwanym `datasetId` oraz użycie jednego tylko, ostatecznego demiurga do zatwierdzenia struktury.
 
-**Schema wejściowa:** `{}` (brak parametrów)
+---
 
-**Zachowanie:** GET na URL ZIP → rozpakowuje adm-zip → konkatenuje tekst wszystkich plików
+## 3. Instrumentarium (Protezy Poznawcze)
 
-**Zwraca:** Połączoną treść wszystkich notatek z nagłówkami plików
+### 3.1 `download_notes` (Zasysacz Eteru)
 
-### 3.2 `preprocess_notes`
+**Opis:** Ekstrahuje z cyberprzestrzeni i rozłupuje skompresowany wolumin (ZIP) skrywający chaotyczne myśli Natana.
 
-**Opis:** Lokalnie parsuje notatki, zapisuje wynik w pamięci procesu i zwraca małe podsumowanie dla modelu.
+**Schemat wejściowy:** `{}` (byt samoistny, niewymagający stymulacji parametrami)
 
-**Schema wejściowa:**
+**Zachowanie mechanizmu:** Impuls GET uderza w ZIP, moduł `adm-zip` dokonuje defragmentacji, a następnie splata całą tekstową materię plików w jeden nieprzerwany potok informacji.
+
+**Zwraca:** Monolityczny tekst wszystkich zapisków, opatrzony metadanymi nagłówków.
+
+### 3.2 `preprocess_notes` (Destylator Sensu)
+
+**Opis:** Narzędzie to lokalnie przeżuwa notatki, odkłada ciężkie myśli w zakamarkach pamięci operacyjnej i przekazuje modelowi zaledwie destylat, małą pigułkę wiedzy.
+
+**Schemat wejściowy:**
 
 ```json
 {
@@ -53,7 +53,7 @@ Agent analityczny. Reguły: brak polskich znaków w nazwach plików/JSON, mianow
 }
 ```
 
-**Zachowanie:** Tokenizacja + stemmer + fuzzy matching budują dane handlowe, które są zapisywane lokalnie pod `datasetId`. Model dostaje tylko:
+**Zachowanie mechanizmu:** Poprzez bezlitosną tokenizację, odcinanie końcówek (stemmer) i przybliżone dopasowania wzorców (fuzzy matching), rodzą się ustrukturyzowane informacje handlowe. Zostają one ukryte pod pieczęcią `datasetId`. Golem Wyższego Rzędu otrzymuje do rozmyślań zaledwie to:
 
 ```json
 {
@@ -63,13 +63,13 @@ Agent analityczny. Reguły: brak polskich znaków w nazwach plików/JSON, mianow
 }
 ```
 
-**Zwraca:** Minimalny payload potrzebny agentowi bez pełnej treści rozmów i bez map handlowych.
+**Zwraca:** Asceza informacyjna. Minimalny ładunek niezbędny do dedukcji, pozbawiony szumu pełnych rozmów i zawiłych map kupieckich.
 
-### 3.3 `submit_filesystem`
+### 3.3 `submit_filesystem` (Kreator Bytów Katalogowych)
 
-**Opis:** Bierze `datasetId` z preprocessingu oraz finalną listę `people`, po czym lokalnie buduje wszystkie akcje filesystem API, resetuje stan i wykonuje końcową weryfikację.
+**Opis:** Chwyta `datasetId` pozostawione przez Destylator, dołącza doń wywnioskowaną przez elektronowy mózg listę `people`, po czym wprawia w ruch machinę stwórczą API systemu plików, resetuje dawny chaos i poddaje dzieło Sądowi Ostatecznemu (weryfikacji).
 
-**Schema wejściowa:**
+**Schemat wejściowy:**
 
 ```json
 {
@@ -78,33 +78,33 @@ Agent analityczny. Reguły: brak polskich znaków w nazwach plików/JSON, mianow
 }
 ```
 
-**Zachowanie:** Narzędzie samo wykonuje `reset`, jeden batch `createDirectory/createFile`, a potem `done`.
+**Zachowanie mechanizmu:** Automat ów samowolnie dokonuje oczyszczenia (`reset`), buduje w jednym akcie woli (batch) nowe podkatalogi i pliki (`createDirectory/createFile`), by na końcu dumnie obwieścić `done`.
 
 ---
 
-## 4. Przepływ Wykonania
+## 4. Drabina Ewolucyjna (Przepływ Wykonania)
 
-```
-START
-  ├─ 1. download_notes → odczytaj notatki Natana
-  ├─ 2. preprocess_notes(rawNotesText) → datasetId + resolvedPeople + unresolvedPeople
-  ├─ 3. Analiza LLM: złóż tylko brakujące nazwy osób z city-specific snippets
-  ├─ 4. submit_filesystem(datasetId, people) → reset + batch + done
-  └─ END
+```text
+POCZĄTEK ISTNIENIA
+  ├─ 1. download_notes → wyssanie zapisków Natana z próżni
+  ├─ 2. preprocess_notes(rawNotesText) → wygenerowanie datasetId oraz wyizolowanie zagadek (resolved/unresolved)
+  ├─ 3. Kontemplacja LLM → syntetyzowanie brakujących tożsamości ludzkich na podstawie topograficznych poszlak
+  ├─ 4. submit_filesystem(datasetId, people) → wielki reset, akt kreacji i finałowa pieczęć (done)
+  └─ KONIEC PROCESU
 ```
 
 ---
 
-## 5. Zależności i Środowisko
+## 5. Zależności i Materia Wszechświata (Środowisko)
 
-### Dodatkowe Paczki
+### Biblioteki (Paczki Zasilające)
 
-| Paczka         | Cel                |
-| -------------- | ------------------ |
-| adm-zip        | Rozpakowywanie ZIP |
-| @types/adm-zip | Typy TS            |
+| Zespół Bytów   | Przeznaczenie w Maszynie                        |
+| -------------- | ----------------------------------------------- |
+| adm-zip        | Rozłupywanie wielowymiarowych archiwów ZIP      |
+| @types/adm-zip | Ontologia typów dla rygorystycznego TypeScriptu |
 
-### Zmienne Środowiskowe
+### Zmienne Kosmiczne (Environment Variables)
 
 ```env
 OPENAI_API_KEY=...
@@ -114,16 +114,16 @@ AI_DEVS_TASK_NAME=filesystem
 AI_DEVS_HUB_ENDPOINT=...
 ```
 
-### Struktura Projektu
+### Architektura Bytów (Struktura Projektu)
 
-```
+```text
 src/
-  index.ts              # Cienki entry z runAgent()
-  prompts.ts            # System + user prompt
+  index.ts              # Punkt osobliwości uruchamiający runAgent()
+  prompts.ts            # Mantry Systemowe i zlecenia Użytkownika
   tools/
-    index.ts            # Rejestr narzędzi
-    download-notes.ts   # Pobieranie ZIP z notatkami
-    preprocess-notes.ts # Zapis preprocessingu i mały payload dla LLM
-    submit-filesystem.ts # Lokalny reset, batch create i done
-    verify.ts           # (nieużywany, zastąpiony przez filesystem-api)
+    index.ts            # Wielki Rejestr Instrumentarium
+    download-notes.ts   # Moduł zasysający archiwum ZIP
+    preprocess-notes.ts # Moduł destylacji i zapisu tymczasowego dla LLM
+    submit-filesystem.ts # Ramię stwórcze: lokalny reset, batch i weryfikacja
+    verify.ts           # (Skamielina ewolucyjna, wyparta przez filesystem-api)
 ```
