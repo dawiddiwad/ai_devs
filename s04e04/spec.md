@@ -4,7 +4,7 @@
 
 ### Streszczenie Zadania
 
-Agent autonomicznie pobiera chaotyczne notatki Natana (archiwum ZIP), analizuje je modelem językowym w celu wyodrębnienia danych handlowych (miasta, osoby, towary), a następnie buduje strukturę katalogów w zdalnym filesystem API jednym batchem.
+Agent autonomicznie pobiera chaotyczne notatki Natana (archiwum ZIP), lokalnie wyodrębnia dane handlowe z plików strukturalnych, zapisuje wynik preprocessingu po stronie narzędzi i zostawia modelowi językowemu tylko złożenie brakujących nazw osób z krótkich wskazówek.
 
 ### Dane Wejściowe
 
@@ -25,7 +25,7 @@ Flaga `{FLG:...}` zwrócona przez akcję `done` po pomyślnej weryfikacji strukt
 
 ### System Prompt
 
-Agent analityczny. Reguły: brak polskich znaków w nazwach plików/JSON, mianownik liczby pojedynczej dla towarów, transliteracja ą→a itp. Zawiera opis oczekiwanej struktury katalogów z przykładami zawartości.
+Agent analityczny. Reguły: brak polskich znaków w nazwach plików/JSON, mianownik liczby pojedynczej dla towarów, transliteracja ą→a itp. Prompt wymusza użycie lokalnego preprocessingu, pracy na uchwycie `datasetId` i jednego narzędzia do finalnego submitu.
 
 ---
 
@@ -41,19 +41,44 @@ Agent analityczny. Reguły: brak polskich znaków w nazwach plików/JSON, mianow
 
 **Zwraca:** Połączoną treść wszystkich notatek z nagłówkami plików
 
-### 3.2 `filesystem_api`
+### 3.2 `preprocess_notes`
 
-**Opis:** Wrapper na verifyAnswer. Obsługuje tryb pojedynczy i batch.
+**Opis:** Lokalnie parsuje notatki, zapisuje wynik w pamięci procesu i zwraca małe podsumowanie dla modelu.
 
 **Schema wejściowa:**
 
 ```json
 {
-  "actions": { "action": "string", "path?": "string", "content?": "string" } | Array<...>
+	"rawNotesText": "string"
 }
 ```
 
-**Zachowanie:** Przekazuje actions jako answer do verifyAnswer. Akcje: help, reset, createDir, createFile, listDir, deleteFile, done.
+**Zachowanie:** Tokenizacja + stemmer + fuzzy matching budują dane handlowe, które są zapisywane lokalnie pod `datasetId`. Model dostaje tylko:
+
+```json
+{
+	"datasetId": "uuid",
+	"resolvedPeople": { "miasto": "Imie Nazwisko" },
+	"unresolvedPeople": [{ "city": "miasto", "names": [], "snippets": ["..."] }]
+}
+```
+
+**Zwraca:** Minimalny payload potrzebny agentowi bez pełnej treści rozmów i bez map handlowych.
+
+### 3.3 `submit_filesystem`
+
+**Opis:** Bierze `datasetId` z preprocessingu oraz finalną listę `people`, po czym lokalnie buduje wszystkie akcje filesystem API, resetuje stan i wykonuje końcową weryfikację.
+
+**Schema wejściowa:**
+
+```json
+{
+	"datasetId": "string",
+	"people": [{ "city": "miasto", "person": "Imie Nazwisko" }]
+}
+```
+
+**Zachowanie:** Narzędzie samo wykonuje `reset`, jeden batch `createDirectory/createFile`, a potem `done`.
 
 ---
 
@@ -62,11 +87,9 @@ Agent analityczny. Reguły: brak polskich znaków w nazwach plików/JSON, mianow
 ```
 START
   ├─ 1. download_notes → odczytaj notatki Natana
-  ├─ 2. filesystem_api({ action: "help" }) → poznaj API
-  ├─ 3. Analiza LLM: wyodrębnij miasta, osoby, towary
-  ├─ 4. filesystem_api({ action: "reset" }) → wyczyść stan
-  ├─ 5. filesystem_api([createDir x3, createFile xN]) → batch
-  ├─ 6. filesystem_api({ action: "done" }) → weryfikacja → flaga
+  ├─ 2. preprocess_notes(rawNotesText) → datasetId + resolvedPeople + unresolvedPeople
+  ├─ 3. Analiza LLM: złóż tylko brakujące nazwy osób z city-specific snippets
+  ├─ 4. submit_filesystem(datasetId, people) → reset + batch + done
   └─ END
 ```
 
@@ -100,6 +123,7 @@ src/
   tools/
     index.ts            # Rejestr narzędzi
     download-notes.ts   # Pobieranie ZIP z notatkami
-    filesystem-api.ts   # Wrapper na filesystem API
+    preprocess-notes.ts # Zapis preprocessingu i mały payload dla LLM
+    submit-filesystem.ts # Lokalny reset, batch create i done
     verify.ts           # (nieużywany, zastąpiony przez filesystem-api)
 ```

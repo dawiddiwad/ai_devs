@@ -21,6 +21,7 @@
 	"dependencies": {
 		"@ai-devs/core": "workspace:*",
 		"adm-zip": "^0.5.17",
+		"node-nlp": "5.0.0-alpha.5",
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {

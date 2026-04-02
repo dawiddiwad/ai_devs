@@ -12,7 +12,7 @@ async function main() {
 		systemPrompt: SYSTEM_PROMPT,
 		userPrompt: USER_PROMPT,
 		toolChoice: 'required',
-		reasoning: { effort: 'medium' },
+		reasoning: { effort: 'low' },
 		serviceTier: 'flex',
 	} as AgentConfig)
 }
