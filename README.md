@@ -1,21 +1,18 @@
 # Agent V `monorepo`
 
-Framework for building AI agents that solve complex tasks using LLMs and tools. I've designed it as part of my journey to learn and experiment with OpenAI API during an online course. Each folder is an independent implementation, sharing core infrastructure but no code between them. 
+Workspace for building AI agents that solve complex tasks using LLMs and tools. 
 
-The goal was to build a modular structure that supports a wide variety of designs and use cases.
+I've designed it as part of my journey to learn and experiment with OpenAI API during an online course.
 
-Each solution lives in its own `sXXeYY/` folder. New solutions are built on top of `@ai-devs/core` - a shared library that handles the agent loop, tool dispatch, flag capture, and logging. The `template/` folder is a base scaffold.
+The goal was to build a modular structure that supports a wide variety of designs and use cases. Each folder is an independent implementation, sharing core infrastructure but no code between them. 
 
----
+Each solution lives in its own `sXXeYY/` folder. New solutions are built on top of `@ai-devs/core` - my library that handles the agent loop, tool dispatch, flag capture, and logging. The `template/` folder is a basic scaffold for new agents.
 
-## Prerequisites
+## Launchpad
 
-- Node.js 20+
-- pnpm (`npm install -g pnpm`)
+> Node.js 20+
 
----
-
-## Quick Start — New Task
+> pnpm (`npm install -g pnpm`)
 
 ### 1. Copy the template
 
@@ -76,179 +73,6 @@ npm run dev
 
 # Production (full build + lint + run)
 npm start
-```
-
----
-
-## What's in `@ai-devs/core`
-
-All infrastructure is imported from `@ai-devs/core`:
-
-```ts
-import {
-  createConfig,     // Load env vars
-  logger,           // Structured logging
-  runAgent,         // Agent loop (responses or completions API)
-  defineAgentTool,  // Tool factory with Zod validation
-  verifyAnswer,     // POST to /verify + flag capture
-  captureFlag,      // Regex flag extractor
-  createOpenAIClient,
-} from '@ai-devs/core'
-```
-
----
-
-## Common Patterns
-
-### Standard agent (responses API)
-
-`index.ts` uses this by default — nothing to change for most tasks:
-
-```ts
-await runAgent(config, {
-  api: 'responses',
-  tools,
-  systemPrompt: SYSTEM_PROMPT,
-  userPrompt: USER_PROMPT,
-})
-```
-
-Switch to chat completions by changing `api: 'completions'`. Same tools, same interface.
-
-### Adding a custom tool
-
-Create `src/tools/my-tool.ts`:
-
-```ts
-import { z } from 'zod/v4'
-import { defineAgentTool } from '@ai-devs/core'
-
-export const myTool = defineAgentTool({
-  name: 'fetch_data',
-  description: 'Fetch data from the task API',
-  schema: z.object({
-    query: z.string().describe('Search query'),
-  }),
-  handler: async ({ query }) => {
-    // Do work, return a string
-    return JSON.stringify({ result: '...' })
-  },
-})
-```
-
-Register it in `src/tools/index.ts`:
-
-```ts
-import { verifyTool } from './verify.js'
-import { myTool } from './my-tool.js'
-
-export const tools = [verifyTool, myTool]
-```
-
-### Task-specific env vars
-
-```ts
-import { createConfig, requireEnv } from '@ai-devs/core'
-
-const config = createConfig({
-  requiredEnv: {
-    serviceUrl: 'SERVICE_URL',
-  },
-  optionalEnv: {
-    region: { name: 'REGION', fallback: 'eu' },
-  },
-})
-```
-
-Add `SERVICE_URL=` to `.env.example`.
-
-This still works too:
-
-```ts
-const config = { ...createConfig(), serviceUrl: requireEnv('SERVICE_URL') }
-```
-
-### Reasoning / o-series models
-
-```ts
-await runAgent(config, {
-  api: 'responses',
-  model: 'gpt-5.4-nano',
-  reasoning: { effort: 'low' },
-  tools,
-  systemPrompt: SYSTEM_PROMPT,
-  userPrompt: USER_PROMPT,
-})
-```
-
-### Multi-agent (sub-agents)
-
-```ts
-import { defineAgentTool, runAgent, createConfig } from '@ai-devs/core'
-
-const config = createConfig()
-
-const dispatchTool = defineAgentTool({
-  name: 'run_subagent',
-  description: 'Delegate a subtask to a specialized agent',
-  schema: z.object({ task: z.string() }),
-  handler: async ({ task }) => {
-    const result = await runAgent(config, {
-      api: 'responses',
-      model: 'gpt-5.4-nano',
-      tools: subTools,
-      systemPrompt: SUBAGENT_PROMPT,
-      userPrompt: task,
-      exitOnFlag: false,   // sub-agent must not exit the process
-    })
-    return result.finalMessage
-  },
-})
-```
-
-### Escape hatch — fully custom loop
-
-For tasks that need an HTTP server, batch processing, or other non-standard flows:
-
-```ts
-import { createConfig, logger, createOpenAIClient, captureFlag } from '@ai-devs/core'
-
-const config = createConfig()
-const client = createOpenAIClient(config)
-
-// Wire your own Express server, batch loop, etc.
-```
-
----
-
-## Project Structure
-
-```
-ai_devs/
-├── packages/
-│   └── core/           # @ai-devs/core — shared library
-│       └── src/
-│           ├── config.ts
-│           ├── completions-loop.ts
-│           ├── logger.ts
-│           ├── tool-factory.ts
-│           ├── openai-client.ts
-│           ├── responses-loop.ts
-│           ├── run-agent.ts
-│           ├── verify.ts
-│           └── index.ts
-│
-├── template/           # Scaffold for new tasks
-│   └── src/
-│       ├── index.ts
-│       ├── prompts.ts
-│       └── tools/
-│           ├── index.ts
-│           └── verify.ts
-│
-├── s01e01/             # Existing lessons (independent, untouched)
-├── ...
-└── s04e03/
 ```
 
 ---
