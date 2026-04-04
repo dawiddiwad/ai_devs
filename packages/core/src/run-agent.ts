@@ -3,12 +3,9 @@ import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/reso
 import { logger } from './logger.js'
 import { captureFlag } from './verify.js'
 import { createOpenAIClient } from './openai-client.js'
-import type { AgentConfig, AgentResult, CoreConfig } from './types.js'
+import type { AgentApi, AgentConfig, AgentResult, CoreConfig } from './types.js'
 
-export async function runAgent(
-	coreConfig: CoreConfig,
-	agentConfig: AgentConfig
-): Promise<AgentResult> {
+export async function runAgent(coreConfig: CoreConfig, agentConfig: AgentConfig): Promise<AgentResult> {
 	const client = createOpenAIClient(coreConfig)
 	const model = agentConfig.model ?? coreConfig.openaiModel
 	const maxIterations = agentConfig.maxIterations ?? 20
@@ -25,6 +22,50 @@ export async function runAgent(
 		return runResponsesAgent(client, model, maxIterations, temperature, agentConfig)
 	}
 	return runCompletionsAgent(client, model, maxIterations, temperature, agentConfig)
+}
+
+async function resolveMessageHandling(
+	config: AgentConfig,
+	api: AgentApi,
+	iterationIndex: number,
+	content: string
+): Promise<{ content: string; isFinal: boolean }> {
+	const handled = await config.handleMessage?.({ api, iterationIndex, content })
+
+	if (!handled) {
+		return { content, isFinal: false }
+	}
+
+	if (handled.action === 'final') {
+		return { content: handled.content ?? content, isFinal: true }
+	}
+
+	return { content: handled.content ?? content, isFinal: false }
+}
+
+async function resolveToolCallHandling(
+	config: AgentConfig,
+	api: AgentApi,
+	iterationIndex: number,
+	name: string,
+	args: unknown,
+	executeDefault: () => Promise<string>
+): Promise<{ result: string; isFinal: boolean }> {
+	const handled = await config.handleToolCall?.({ api, iterationIndex, name, args, executeDefault })
+
+	if (!handled) {
+		return { result: await executeDefault(), isFinal: false }
+	}
+
+	if (handled.action === 'final') {
+		return { result: handled.result, isFinal: true }
+	}
+
+	if (handled.result !== undefined) {
+		return { result: handled.result, isFinal: false }
+	}
+
+	return { result: await executeDefault(), isFinal: false }
 }
 
 async function runResponsesAgent(
@@ -47,8 +88,8 @@ async function runResponsesAgent(
 	let flagCaptured: string | null = null
 	let inputMessages: ResponseInput = []
 
-	for (let i = 0; i < maxIterations; i++) {
-		logger.agent('info', `Iteration ${i + 1}/${maxIterations}`)
+	for (let iteration = 0; iteration < maxIterations; iteration++) {
+		logger.agent('info', `Iteration ${iteration + 1}/${maxIterations}`)
 
 		const response = await client.responses.create({
 			model,
@@ -58,10 +99,8 @@ async function runResponsesAgent(
 			temperature,
 			input: inputMessages,
 			...(config.reasoning ? { reasoning: config.reasoning } : {}),
-			context_management: [
-				{ type: 'compaction', compact_threshold: config.compactThreshold ?? 100000 },
-			],
-			service_tier: config.serviceTier
+			context_management: [{ type: 'compaction', compact_threshold: config.compactThreshold ?? 100000 }],
+			service_tier: config.serviceTier,
 		})
 
 		inputMessages = []
@@ -74,15 +113,20 @@ async function runResponsesAgent(
 					.join('')
 
 				if (text) {
-					lastMessage = text
-					logger.agent('info', 'Agent message', { content: text.slice(0, 200) })
-					await config.onMessage?.(text)
+					const handledMessage = await resolveMessageHandling(config, 'responses', iteration, text)
+					lastMessage = handledMessage.content
+					logger.agent('info', 'Agent message', { content: handledMessage.content.slice(0, 200) })
+					await config.onMessage?.(handledMessage.content)
 
-					const flag = captureFlag(text)
+					const flag = captureFlag(handledMessage.content)
 					if (flag) {
 						flagCaptured = flag
 						if (config.exitOnFlag !== false) process.exit(0)
-						return { finalMessage: lastMessage, iterations: i + 1, flagCaptured }
+						return { finalMessage: lastMessage, iterations: iteration + 1, flagCaptured }
+					}
+
+					if (handledMessage.isFinal) {
+						return { finalMessage: lastMessage, iterations: iteration + 1, flagCaptured }
 					}
 				}
 			}
@@ -93,24 +137,45 @@ async function runResponsesAgent(
 				try {
 					const tool = config.tools.find((t) => t.definition.name === item.name)
 					const parsedArgs = JSON.parse(item.arguments)
-					const result = tool
-						? await tool.execute(parsedArgs)
-						: JSON.stringify({ error: `Unknown tool: ${item.name}` })
+					let defaultResultPromise: Promise<string> | undefined
+					const executeDefault = () => {
+						if (!defaultResultPromise) {
+							defaultResultPromise = tool
+								? tool.execute(parsedArgs)
+								: Promise.resolve(JSON.stringify({ error: `Unknown tool: ${item.name}` }))
+						}
+
+						return defaultResultPromise
+					}
+
+					const handledToolCall = await resolveToolCallHandling(
+						config,
+						'responses',
+						iteration,
+						item.name,
+						parsedArgs,
+						executeDefault
+					)
+					const result = handledToolCall.result
 
 					await config.onToolCall?.(item.name, parsedArgs, result)
+
+					const flag = captureFlag(result)
+					if (flag) {
+						flagCaptured = flag
+						if (config.exitOnFlag !== false) process.exit(0)
+						return { finalMessage: result, iterations: iteration + 1, flagCaptured }
+					}
+
+					if (handledToolCall.isFinal) {
+						return { finalMessage: result, iterations: iteration + 1, flagCaptured }
+					}
 
 					inputMessages.push({
 						type: 'function_call_output',
 						call_id: item.call_id,
 						output: result,
 					})
-
-					const flag = captureFlag(result)
-					if (flag) {
-						flagCaptured = flag
-						if (config.exitOnFlag !== false) process.exit(0)
-						return { finalMessage: result, iterations: i + 1, flagCaptured }
-					}
 				} catch (error) {
 					const errorMsg = error instanceof Error ? error.message : String(error)
 					logger.tool('error', `Tool error: ${item.name}`, { error: errorMsg })
@@ -125,7 +190,7 @@ async function runResponsesAgent(
 
 		if (inputMessages.length === 0) {
 			logger.agent('info', 'No tool calls — agent finished')
-			return { finalMessage: lastMessage, iterations: i + 1, flagCaptured }
+			return { finalMessage: lastMessage, iterations: iteration + 1, flagCaptured }
 		}
 	}
 
@@ -158,8 +223,8 @@ async function runCompletionsAgent(
 	let lastMessage = ''
 	let flagCaptured: string | null = null
 
-	for (let i = 0; i < maxIterations; i++) {
-		logger.agent('info', `Iteration ${i + 1}/${maxIterations}`)
+	for (let iteration = 0; iteration < maxIterations; iteration++) {
+		logger.agent('info', `Iteration ${iteration + 1}/${maxIterations}`)
 
 		const response = await client.chat.completions.create({
 			model,
@@ -171,28 +236,33 @@ async function runCompletionsAgent(
 		const message = response.choices[0]?.message
 		if (!message) {
 			logger.agent('error', 'No message in response')
-			return { finalMessage: lastMessage, iterations: i + 1, flagCaptured }
+			return { finalMessage: lastMessage, iterations: iteration + 1, flagCaptured }
 		}
 
 		messages.push(message)
 
 		if (message.content) {
-			lastMessage = message.content
-			logger.agent('info', 'Agent message', { content: message.content.slice(0, 200) })
-			await config.onMessage?.(message.content)
+			const handledMessage = await resolveMessageHandling(config, 'completions', iteration, message.content)
+			lastMessage = handledMessage.content
+			logger.agent('info', 'Agent message', { content: handledMessage.content.slice(0, 200) })
+			await config.onMessage?.(handledMessage.content)
 
-			const flag = captureFlag(message.content)
+			const flag = captureFlag(handledMessage.content)
 			if (flag) {
 				flagCaptured = flag
 				if (config.exitOnFlag !== false) process.exit(0)
-				return { finalMessage: lastMessage, iterations: i + 1, flagCaptured }
+				return { finalMessage: lastMessage, iterations: iteration + 1, flagCaptured }
+			}
+
+			if (handledMessage.isFinal) {
+				return { finalMessage: lastMessage, iterations: iteration + 1, flagCaptured }
 			}
 		}
 
 		if (!message.tool_calls?.length) {
 			logger.agent('info', 'No tool calls — agent finished')
 			logger.agent('info', 'Response', { content: JSON.stringify(response, null, 2) })
-			return { finalMessage: lastMessage, iterations: i + 1, flagCaptured }
+			return { finalMessage: lastMessage, iterations: iteration + 1, flagCaptured }
 		}
 
 		for (const toolCall of message.tool_calls) {
@@ -205,24 +275,45 @@ async function runCompletionsAgent(
 			try {
 				const tool = config.tools.find((t) => t.definition.name === toolCall.function.name)
 				const parsedArgs = JSON.parse(toolCall.function.arguments)
-				const result = tool
-					? await tool.execute(parsedArgs)
-					: JSON.stringify({ error: `Unknown tool: ${toolCall.function.name}` })
+				let defaultResultPromise: Promise<string> | undefined
+				const executeDefault = () => {
+					if (!defaultResultPromise) {
+						defaultResultPromise = tool
+							? tool.execute(parsedArgs)
+							: Promise.resolve(JSON.stringify({ error: `Unknown tool: ${toolCall.function.name}` }))
+					}
+
+					return defaultResultPromise
+				}
+
+				const handledToolCall = await resolveToolCallHandling(
+					config,
+					'completions',
+					iteration,
+					toolCall.function.name,
+					parsedArgs,
+					executeDefault
+				)
+				const result = handledToolCall.result
 
 				await config.onToolCall?.(toolCall.function.name, parsedArgs, result)
+
+				const flag = captureFlag(result)
+				if (flag) {
+					flagCaptured = flag
+					if (config.exitOnFlag !== false) process.exit(0)
+					return { finalMessage: result, iterations: iteration + 1, flagCaptured }
+				}
+
+				if (handledToolCall.isFinal) {
+					return { finalMessage: result, iterations: iteration + 1, flagCaptured }
+				}
 
 				messages.push({
 					role: 'tool',
 					tool_call_id: toolCall.id,
 					content: result,
 				})
-
-				const flag = captureFlag(result)
-				if (flag) {
-					flagCaptured = flag
-					if (config.exitOnFlag !== false) process.exit(0)
-					return { finalMessage: result, iterations: i + 1, flagCaptured }
-				}
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error)
 				logger.tool('error', `Tool error: ${toolCall.function.name}`, { error: errorMsg })

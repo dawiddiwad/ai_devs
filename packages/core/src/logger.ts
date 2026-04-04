@@ -27,7 +27,8 @@ function log(category: LogCategory, level: LogLevel, message: string, context?: 
 }
 
 export const logger = {
-	agent: (level: LogLevel, message: string, context?: Record<string, unknown>) => log('agent', level, message, context),
+	agent: (level: LogLevel, message: string, context?: Record<string, unknown>) =>
+		log('agent', level, message, context),
 	tool: (level: LogLevel, message: string, context?: Record<string, unknown>) => log('tool', level, message, context),
 	api: (level: LogLevel, message: string, context?: Record<string, unknown>) => log('api', level, message, context),
 }

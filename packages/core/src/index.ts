@@ -5,9 +5,20 @@ export { createOpenAIClient } from './openai-client.js'
 export { runAgent } from './run-agent.js'
 export { verifyAnswer, captureFlag } from './verify.js'
 export type {
+	AgentApi,
 	AgentTool,
 	AgentConfig,
+	AgentMessageContext,
+	AgentMessageHandlerResult,
+	AgentToolCallContext,
+	AgentToolCallHandlerResult,
 	AgentResult,
 	CoreConfig,
+	CreateConfigRequiredEnv,
+	CreateConfigOptionalEnvValue,
+	CreateConfigOptionalEnv,
+	CreateConfigOptions,
+	CreateConfigResolvedEnv,
+	CreateConfigResult,
 	VerifyResult,
 } from './types.js'

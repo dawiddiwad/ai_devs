@@ -72,8 +72,10 @@ await runAgent(config, {
 	reasoning: { effort: 'high' }, // responses API only
 	toolChoice: 'auto',           // 'auto' | 'required' | 'none'
 	exitOnFlag: true,             // default: true
-	onToolCall: (name, args, result) => { ... },  // optional hook
-	onMessage: (content) => { ... },               // optional hook
+	onToolCall: (name, args, result) => { ... },  // optional observer hook
+	onMessage: (content) => { ... },               // optional observer hook
+	handleToolCall: async ({ name, args, executeDefault }) => ({ result: await executeDefault(), action: 'continue' }),
+	handleMessage: ({ content }) => ({ content, action: 'continue' }),
 })
 ```
 
@@ -90,8 +92,16 @@ import { createConfig, logger, createOpenAIClient, defineAgentTool, captureFlag 
 Extend standard config with task-specific env vars:
 
 ```ts
-import { createConfig, requireEnv } from '@ai-devs/core'
-const config = { ...createConfig(), okoUrl: requireEnv('OKO_URL') }
+import { createConfig } from '@ai-devs/core'
+
+const config = createConfig({
+	requiredEnv: {
+		okoUrl: 'OKO_URL',
+	},
+	optionalEnv: {
+		region: { name: 'REGION', fallback: 'eu' },
+	},
+})
 ```
 
 ## Common Anti-Patterns to Avoid

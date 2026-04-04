@@ -146,10 +146,23 @@ export const tools = [verifyTool, myTool]
 ```ts
 import { createConfig, requireEnv } from '@ai-devs/core'
 
-const config = { ...createConfig(), serviceUrl: requireEnv('SERVICE_URL') }
+const config = createConfig({
+  requiredEnv: {
+    serviceUrl: 'SERVICE_URL',
+  },
+  optionalEnv: {
+    region: { name: 'REGION', fallback: 'eu' },
+  },
+})
 ```
 
 Add `SERVICE_URL=` to `.env.example`.
+
+This still works too:
+
+```ts
+const config = { ...createConfig(), serviceUrl: requireEnv('SERVICE_URL') }
+```
 
 ### Reasoning / o-series models
 

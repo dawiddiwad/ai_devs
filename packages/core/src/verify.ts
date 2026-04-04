@@ -28,9 +28,7 @@ export async function verifyAnswer(
 		validateStatus: () => true,
 	})
 
-	const responseText = typeof response.data === 'string'
-		? response.data
-		: JSON.stringify(response.data)
+	const responseText = typeof response.data === 'string' ? response.data : JSON.stringify(response.data)
 
 	logger.api('info', 'Verification response', { response: responseText })
 

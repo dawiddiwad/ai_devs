@@ -32,10 +32,17 @@ Do NOT create local config.ts, logger.ts, or tool-factory.ts — these live in @
 
 ## Config
 
-Use `createConfig()` for standard vars. Extend with spread for task-specific vars:
+Use `createConfig()` for standard vars. Add task-specific env vars inline when needed:
 
 ```ts
-const config = { ...createConfig(), customVar: requireEnv('CUSTOM_VAR') }
+const config = createConfig({
+	requiredEnv: {
+		customVar: 'CUSTOM_VAR',
+	},
+	optionalEnv: {
+		region: { name: 'REGION', fallback: 'eu' },
+	},
+})
 ```
 
 ## Logging

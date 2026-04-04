@@ -2,6 +2,7 @@
   "name": "ai-devs-workspace",
   "private": true,
   "scripts": {
+    "install:core": "pnpm --filter @ai-devs/core install",
     "build:core": "pnpm --filter @ai-devs/core build",
     "dev:core": "pnpm --filter @ai-devs/core dev"
   }
