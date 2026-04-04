@@ -1,6 +1,10 @@
-# Agent Framework Monorepo
+# Agent V `monorepo`
 
-Monorepo for AI agents. Each agent lives in its own `sXXeYY/` folder. New tasks are built on top of `@ai-devs/core` — a shared library that handles the agent loop, tool dispatch, flag capture, and verification.
+Framework for building AI agents that solve complex tasks using LLMs and tools. I've designed it as part of my journey to learn and experiment with OpenAI API during an online course. Each folder is an independent implementation, sharing core infrastructure but no code between them. 
+
+The goal was to build a modular structure that supports a wide variety of designs and use cases.
+
+Each solution lives in its own `sXXeYY/` folder. New solutions are built on top of `@ai-devs/core` - a shared library that handles the agent loop, tool dispatch, flag capture, and logging. The `template/` folder is a base scaffold.
 
 ---
 
