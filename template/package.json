@@ -8,7 +8,7 @@
 	"main": "dist/index.js",
 	"scripts": {
 		"build": "npm run compile:check && npm run lint:check && npm run format:check && tsc",
-		"build:core": "pnpm run build -w @ai-devs/core",
+		"build:core": "pnpm --filter @ai-devs/core run build",
 		"start": "npm run build && node dist/index.js",
 		"dev": "npx ts-node src/index.ts",
 		"compile:check": "npx tsc --noEmit",
