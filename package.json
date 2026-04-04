@@ -1,5 +1,6 @@
 {
   "name": "ai-devs-workspace",
+  "author": "Dawid Dobrowolski",
   "private": true,
   "scripts": {
     "install:core": "pnpm --filter @ai-devs/core install",

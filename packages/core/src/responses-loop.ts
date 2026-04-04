@@ -3,10 +3,10 @@ import { logger } from './logger.js'
 import { captureFlag } from './verify.js'
 import { createOpenAIClient } from './openai-client.js'
 import type {
-	AgentConfig,
 	AgentMessageHandlerResult,
 	AgentNoToolCallsHandlerResult,
 	AgentResult,
+	AgentResponsesConfig,
 	AgentToolCallHandlerResult,
 } from './types.js'
 
@@ -54,7 +54,7 @@ function createLoopExit(finalMessage: string, iterationIndex: number, flagCaptur
 }
 
 function resolveFinalState(
-	config: AgentConfig,
+	config: AgentResponsesConfig,
 	finalMessage: string,
 	iterationIndex: number,
 	isFinal: boolean
@@ -84,7 +84,7 @@ function resolveFinalState(
 function createResponsesRequest(
 	model: string,
 	temperature: number | undefined,
-	config: AgentConfig,
+	config: AgentResponsesConfig,
 	conversationId: string,
 	input: ResponseInput,
 	toolDefs: Tool[]
@@ -121,7 +121,7 @@ function appendResponsesToolError(input: ResponseInput, callId: string, error: u
 	return appendResponsesToolOutput(input, callId, JSON.stringify({ error: errorMessage }))
 }
 
-function createDefaultToolExecutor(config: AgentConfig, name: string, args: unknown): () => Promise<string> {
+function createDefaultToolExecutor(config: AgentResponsesConfig, name: string, args: unknown): () => Promise<string> {
 	const tool = config.tools.find((candidate) => candidate.definition.name === name)
 	let defaultResultPromise: Promise<string> | undefined
 
@@ -137,7 +137,7 @@ function createDefaultToolExecutor(config: AgentConfig, name: string, args: unkn
 }
 
 async function resolveMessageHandling(
-	config: AgentConfig,
+	config: AgentResponsesConfig,
 	iterationIndex: number,
 	content: string,
 	input: ResponseInput
@@ -156,7 +156,7 @@ async function resolveMessageHandling(
 }
 
 async function resolveToolCallHandling(
-	config: AgentConfig,
+	config: AgentResponsesConfig,
 	iterationIndex: number,
 	name: string,
 	args: unknown,
@@ -186,7 +186,7 @@ async function resolveToolCallHandling(
 }
 
 async function resolveNoToolCallsHandling(
-	config: AgentConfig,
+	config: AgentResponsesConfig,
 	iterationIndex: number,
 	content: string,
 	input: ResponseInput
@@ -219,7 +219,7 @@ async function resolveNoToolCallsHandling(
 }
 
 async function handleResponsesMessage(
-	config: AgentConfig,
+	config: AgentResponsesConfig,
 	iterationIndex: number,
 	text: string,
 	state: ResponsesLoopState
@@ -248,7 +248,7 @@ async function handleResponsesMessage(
 }
 
 async function handleResponsesToolCall(
-	config: AgentConfig,
+	config: AgentResponsesConfig,
 	iterationIndex: number,
 	item: ResponsesFunctionCallItem,
 	state: ResponsesLoopState
@@ -296,7 +296,7 @@ async function handleResponsesToolCall(
 }
 
 async function handleResponsesNoToolCalls(
-	config: AgentConfig,
+	config: AgentResponsesConfig,
 	iterationIndex: number,
 	state: ResponsesLoopState
 ): Promise<ResponsesNoToolCallsPhaseResult> {
@@ -330,7 +330,7 @@ export async function runResponsesLoop(
 	model: string,
 	maxIterations: number,
 	temperature: number | undefined,
-	config: AgentConfig
+	config: AgentResponsesConfig
 ): Promise<AgentResult> {
 	const toolDefs = config.tools.map((tool) => tool.definition) satisfies Tool[]
 	const conversation = await client.conversations.create({

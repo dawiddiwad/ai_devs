@@ -3,7 +3,7 @@ import { logger } from './logger.js'
 import { captureFlag } from './verify.js'
 import { createOpenAIClient } from './openai-client.js'
 import type {
-	AgentConfig,
+	AgentCompletionsConfig,
 	AgentMessageHandlerResult,
 	AgentNoToolCallsHandlerResult,
 	AgentResult,
@@ -62,7 +62,7 @@ function createLoopExit(finalMessage: string, iterationIndex: number, flagCaptur
 }
 
 function resolveFinalState(
-	config: AgentConfig,
+	config: AgentCompletionsConfig,
 	finalMessage: string,
 	iterationIndex: number,
 	isFinal: boolean
@@ -143,7 +143,7 @@ function appendCompletionsToolError(
 	return appendCompletionsToolResult(messages, toolCallId, JSON.stringify({ error: errorMessage }))
 }
 
-function createDefaultToolExecutor(config: AgentConfig, name: string, args: unknown): () => Promise<string> {
+function createDefaultToolExecutor(config: AgentCompletionsConfig, name: string, args: unknown): () => Promise<string> {
 	const tool = config.tools.find((candidate) => candidate.definition.name === name)
 	let defaultResultPromise: Promise<string> | undefined
 
@@ -159,7 +159,7 @@ function createDefaultToolExecutor(config: AgentConfig, name: string, args: unkn
 }
 
 async function resolveMessageHandling(
-	config: AgentConfig,
+	config: AgentCompletionsConfig,
 	iterationIndex: number,
 	content: string,
 	messages: ChatCompletionMessageParam[]
@@ -182,7 +182,7 @@ async function resolveMessageHandling(
 }
 
 async function resolveToolCallHandling(
-	config: AgentConfig,
+	config: AgentCompletionsConfig,
 	iterationIndex: number,
 	name: string,
 	args: unknown,
@@ -217,7 +217,7 @@ async function resolveToolCallHandling(
 }
 
 async function resolveNoToolCallsHandling(
-	config: AgentConfig,
+	config: AgentCompletionsConfig,
 	iterationIndex: number,
 	content: string,
 	messages: ChatCompletionMessageParam[]
@@ -250,7 +250,7 @@ async function resolveNoToolCallsHandling(
 }
 
 async function handleCompletionsMessage(
-	config: AgentConfig,
+	config: AgentCompletionsConfig,
 	iterationIndex: number,
 	content: string,
 	state: CompletionsLoopState
@@ -279,7 +279,7 @@ async function handleCompletionsMessage(
 }
 
 async function handleCompletionsToolCall(
-	config: AgentConfig,
+	config: AgentCompletionsConfig,
 	iterationIndex: number,
 	toolCall: CompletionsFunctionToolCall,
 	state: CompletionsLoopState
@@ -329,7 +329,7 @@ async function handleCompletionsToolCall(
 }
 
 async function handleCompletionsNoToolCalls(
-	config: AgentConfig,
+	config: AgentCompletionsConfig,
 	iterationIndex: number,
 	state: CompletionsLoopState
 ): Promise<CompletionsNoToolCallsPhaseResult> {
@@ -363,7 +363,7 @@ export async function runCompletionsLoop(
 	model: string,
 	maxIterations: number,
 	temperature: number | undefined,
-	config: AgentConfig
+	config: AgentCompletionsConfig
 ): Promise<AgentResult> {
 	const toolDefs: ChatCompletionTool[] = config.tools.map((tool) => ({
 		type: 'function' as const,
