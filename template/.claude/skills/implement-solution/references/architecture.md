@@ -74,8 +74,15 @@ await runAgent(config, {
 	exitOnFlag: true,             // default: true
 	onToolCall: (name, args, result) => { ... },  // optional observer hook
 	onMessage: (content) => { ... },               // optional observer hook
-	handleToolCall: async ({ name, args, executeDefault }) => ({ result: await executeDefault(), action: 'continue' }),      // advanced: intercept and customize tool calls handling
-	handleMessage: ({ content }) => ({ content, action: 'continue' }),     // advanced: intercept and customize agent messages handling
+	handleToolCall: async (context) => context.api === 'responses'
+		? { action: 'continue', result: await context.executeDefault(), input: context.input }
+		: { action: 'continue', result: await context.executeDefault(), messages: context.messages },
+	handleMessage: (context) => context.api === 'responses'
+		? { action: 'continue', content: context.content, input: context.input }
+		: { action: 'continue', content: context.content, messages: context.messages },
+	handleNoToolCalls: (context) => context.api === 'responses'
+		? { action: 'continue', content: context.content, input: [...context.input] }
+		: { action: 'continue', content: context.content, messages: [...context.messages] },
 })
 ```
 

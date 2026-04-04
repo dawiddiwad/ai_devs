@@ -74,8 +74,15 @@ await runAgent(config, {
 	exitOnFlag: true,             // default: true
 	onToolCall: (name, args, result) => { ... },  // optional observer hook
 	onMessage: (content) => { ... },               // optional observer hook
-	handleToolCall: async ({ name, args, executeDefault }) => ({ result: await executeDefault(), action: 'continue' }),
-	handleMessage: ({ content }) => ({ content, action: 'continue' }),
+	handleToolCall: async (context) => context.api === 'responses'
+		? { action: 'continue', result: await context.executeDefault(), input: context.input }
+		: { action: 'continue', result: await context.executeDefault(), messages: context.messages },
+	handleMessage: (context) => context.api === 'responses'
+		? { action: 'continue', content: context.content, input: context.input }
+		: { action: 'continue', content: context.content, messages: context.messages },
+	handleNoToolCalls: (context) => context.api === 'responses'
+		? { action: 'continue', content: context.content, input: [...context.input] }
+		: { action: 'continue', content: context.content, messages: [...context.messages] },
 })
 ```
 

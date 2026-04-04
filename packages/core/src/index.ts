@@ -12,6 +12,8 @@ export type {
 	AgentMessageHandlerResult,
 	AgentToolCallContext,
 	AgentToolCallHandlerResult,
+	AgentNoToolCallsContext,
+	AgentNoToolCallsHandlerResult,
 	AgentResult,
 	CoreConfig,
 	CreateConfigRequiredEnv,

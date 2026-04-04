@@ -225,9 +225,11 @@ ai_devs/
 │   └── core/           # @ai-devs/core — shared library
 │       └── src/
 │           ├── config.ts
+│           ├── completions-loop.ts
 │           ├── logger.ts
 │           ├── tool-factory.ts
 │           ├── openai-client.ts
+│           ├── responses-loop.ts
 │           ├── run-agent.ts
 │           ├── verify.ts
 │           └── index.ts

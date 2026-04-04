@@ -1,4 +1,5 @@
-import type { FunctionTool } from 'openai/resources/responses/responses'
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
+import type { FunctionTool, ResponseInput } from 'openai/resources/responses/responses'
 import type { ReasoningEffort } from 'openai/resources/shared'
 
 export interface AgentTool {
@@ -8,29 +9,93 @@ export interface AgentTool {
 
 export type AgentApi = 'responses' | 'completions'
 
-export interface AgentMessageContext {
-	api: AgentApi
+export interface AgentResponsesMessageContext {
+	api: 'responses'
 	iterationIndex: number
 	content: string
+	input: ResponseInput
 }
 
-export type AgentMessageHandlerResult =
-	| void
-	| { action: 'continue'; content?: string }
-	| { action: 'final'; content?: string }
+export interface AgentCompletionsMessageContext {
+	api: 'completions'
+	iterationIndex: number
+	content: string
+	messages: ChatCompletionMessageParam[]
+}
 
-export interface AgentToolCallContext {
-	api: AgentApi
+export type AgentMessageContext = AgentResponsesMessageContext | AgentCompletionsMessageContext
+
+export type AgentResponsesMessageHandlerResult =
+	| { action: 'continue'; content?: string; input?: ResponseInput }
+	| { action: 'final'; content?: string; input?: ResponseInput }
+
+export type AgentCompletionsMessageHandlerResult =
+	| { action: 'continue'; content?: string; messages?: ChatCompletionMessageParam[] }
+	| { action: 'final'; content?: string; messages?: ChatCompletionMessageParam[] }
+
+export type AgentMessageHandlerResult = void | AgentResponsesMessageHandlerResult | AgentCompletionsMessageHandlerResult
+
+export interface AgentResponsesToolCallContext {
+	api: 'responses'
 	iterationIndex: number
 	name: string
 	args: unknown
+	input: ResponseInput
 	executeDefault: () => Promise<string>
 }
 
+export interface AgentCompletionsToolCallContext {
+	api: 'completions'
+	iterationIndex: number
+	name: string
+	args: unknown
+	messages: ChatCompletionMessageParam[]
+	executeDefault: () => Promise<string>
+}
+
+export type AgentToolCallContext = AgentResponsesToolCallContext | AgentCompletionsToolCallContext
+
+export type AgentResponsesToolCallHandlerResult =
+	| { action: 'continue'; result?: string; input?: ResponseInput }
+	| { action: 'final'; result: string; input?: ResponseInput }
+
+export type AgentCompletionsToolCallHandlerResult =
+	| { action: 'continue'; result?: string; messages?: ChatCompletionMessageParam[] }
+	| { action: 'final'; result: string; messages?: ChatCompletionMessageParam[] }
+
 export type AgentToolCallHandlerResult =
 	| void
-	| { action: 'continue'; result?: string }
-	| { action: 'final'; result: string }
+	| AgentResponsesToolCallHandlerResult
+	| AgentCompletionsToolCallHandlerResult
+
+export interface AgentResponsesNoToolCallsContext {
+	api: 'responses'
+	iterationIndex: number
+	content: string
+	input: ResponseInput
+}
+
+export interface AgentCompletionsNoToolCallsContext {
+	api: 'completions'
+	iterationIndex: number
+	content: string
+	messages: ChatCompletionMessageParam[]
+}
+
+export type AgentNoToolCallsContext = AgentResponsesNoToolCallsContext | AgentCompletionsNoToolCallsContext
+
+export type AgentResponsesNoToolCallsHandlerResult =
+	| { action: 'continue'; content?: string; input: ResponseInput }
+	| { action: 'final'; content?: string; input?: ResponseInput }
+
+export type AgentCompletionsNoToolCallsHandlerResult =
+	| { action: 'continue'; content?: string; messages: ChatCompletionMessageParam[] }
+	| { action: 'final'; content?: string; messages?: ChatCompletionMessageParam[] }
+
+export type AgentNoToolCallsHandlerResult =
+	| void
+	| AgentResponsesNoToolCallsHandlerResult
+	| AgentCompletionsNoToolCallsHandlerResult
 
 export interface AgentConfig {
 	api: AgentApi
@@ -49,6 +114,9 @@ export interface AgentConfig {
 	onMessage?: (content: string) => void | Promise<void>
 	handleToolCall?: (context: AgentToolCallContext) => AgentToolCallHandlerResult | Promise<AgentToolCallHandlerResult>
 	handleMessage?: (context: AgentMessageContext) => AgentMessageHandlerResult | Promise<AgentMessageHandlerResult>
+	handleNoToolCalls?: (
+		context: AgentNoToolCallsContext
+	) => AgentNoToolCallsHandlerResult | Promise<AgentNoToolCallsHandlerResult>
 }
 
 export interface AgentResult {
