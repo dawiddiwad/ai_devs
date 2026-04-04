@@ -1,152 +1,117 @@
-# Infiltracja Magazynów Zygfryda, czyli `foodwarehouse`
+# Cyberiada Magazynowa `foodwarehouse`
 
-## 1. Przegląd i Cel Operacji
+## I. Ekspozycja i Cel Wielkiej Dywersji
 
-### Streszczenie Misji
+### Kronika Misji
 
-Nasz automat, działając na zlecenie Azazela, wkrada się wirtualnie do systemów dystrybucji magazynów Zygfryda. Zadanie polega na przeprogramowaniu zamówień tak, aby towary trafiły do potrzebujących miast. Agent odkrywa API poprzez komendę `help`, bada schemat bazy SQLite, generuje kryptograficzne podpisy SHA1 i tworzy jedno zamówienie na każde miasto — wypełnione dokładnie tym, czego potrzebuje.
+Oto opowieść o elektronicznym fantomie, który na zlecenie mrocznego eminenta Azazela, przeniknął w trzewia cyfrowych systemów dystrybucyjnych niejakiego Zygfryda. Ów Zygfryd, tyran obfitości, gromadził dobra wszelakie, miast dzielić je z potrzebującymi. Zadaniem naszego automatu jest subtelna rekonfiguracja strumieni logistycznych — tak, by transakcyjne potoki skierować ku miastom łaknącym chleba i wody. Agent, posługując się inkantacją `help`, musi zgłębić arkana API, przeniknąć do krzemowego sumienia bazy SQLite, wygenerować kryptograficzne pieczęcie SHA1 i powołać do bytu manifesty aprowizacyjne, zaspokajające głód co do joty.
 
-### Parametry Brzegowe
+### Parametry Ontologiczne Operacji
 
-| Współrzędna          | Wartość                                         |
-| -------------------- | ----------------------------------------------- |
-| Kryptonim misji      | `foodwarehouse`                                 |
-| Ołtarz weryfikacji   | `config.verifyEndpoint` (`HUB_ENDPOINT/verify`) |
-| Plik zapotrzebowania | `HUB_ENDPOINT/dane/food4cities.json`            |
-| Baza danych          | SQLite (tylko odczyt)                           |
+| Desygnat           | Wartość Substancjalna                               |
+| ------------------ | --------------------------------------------------- |
+| Kryptonim bytu     | `foodwarehouse`                                     |
+| Ołtarz weryfikacji | `HUB_ENDPOINT/verify`                               |
+| Rejestr Niedoborów | `HUB_ENDPOINT/dane/food4cities.json`                |
+| Matryca Danych     | SQLite (wgląd dopuszczalny, modyfikacja wzbroniona) |
 
-### Artefakt
+### Kwintesencja (Flaga)
 
-Flaga `{FLG:...}` zwrócona przez API po wywołaniu `done` z kompletnymi i poprawnymi zamówieniami.
+Po dopełnieniu rytuału `done` i pomyślnym usankcjonowaniu zamówień, system wypluje z siebie artefakt najwyższej próby: flagę `{FLG:...}`, będącą dowodem ostatecznego triumfu rozumu nad chciwością.
 
 ---
 
-## 2. Persona i Strategia Promptów
+## II. Dusza Maszyny i Strategia Logarytmiczna
 
-### System Prompt
+### Instrukcja Systemowa (System Prompt)
 
-```
-You are a warehouse infiltration agent. Your mission: create exactly one order per city
-listed in the food requirements file, each order containing the exact goods that city needs.
+```text
+Jesteś subtylnym przesuwaczem bitów w służbie aprowizacji. Twoje powołanie: powołać do bytu dokładnie jeden manifest na każde miasto wymienione w rejestrze niedoborów, nasycając go dobrami w ilościach ściśle określonych.
 
-## Workflow
+## Protokół Postępowania
 
-1. Call warehouse_api with tool="help" to discover the full API schema
-2. Call fetch_requirements to get city names and their goods requirements
-3. Call warehouse_api with tool="database" and query="show tables" to explore the SQLite schema
-4. Query the database to find destination codes for each city and creator user data needed for signatures
-5. For each city:
-   a. Generate SHA1 signature via warehouse_api with tool="signatureGenerator"
-   b. Create order via warehouse_api with tool="orders", action="create"
-   c. Append all goods in one batch call via warehouse_api with tool="orders", action="append", items as object
-6. Call warehouse_api with tool="done" to finalize
+1. Wywołaj `warehouse_api` z narzędziem `help`, by pojąć naturę interfejsu i jego ukryte ścieżki.
+2. Uruchom `fetch_requirements`, by odczytać pragnienia metropolii.
+3. Przeniknij do bazy danych (`database`) zapytaniem "show tables", by zbadać strukturę cyfrowego spichlerza.
+4. Wyciągnij z krzemowych pokładów kody przeznaczenia oraz dane kreatorów, bez których pieczęcie będą nieważne.
+5. Dla każdego z miast:
+   a. Wykuj kryptograficzny podpis SHA1 przez `signatureGenerator`.
+   b. Zainicjuj zamówienie (`orders.create`), podając CreatorID, Destination i Signaturę.
+   c. Wypełnij manifest towarami w jednym, potężnym rzucie (`orders.append`), traktując dobra jako spójny obiekt.
+6. Zakończ ceremonię komendą `done`.
 
-## Rules
+## Kanon Zasad
 
-- Always start with help to understand the API
-- Use reset if state gets corrupted, then redo all orders from step 5
-- Always batch-append items (items as object map) — not one by one
-- Never call done before every city has a complete order
-- creatorID and destination come from the database — discover them via SQL queries
-- Signature is generated per order — call signatureGenerator for each city
+- Nigdy nie działaj w ciemno — `help` jest Twoim światłem.
+- Jeśli entropia wzrośnie (błąd stanu), dokonaj resetu i zacznij od piątego punktu.
+- Towary dodawaj hurtem, nie zaś pojedynczymi kęsami.
+- Nie wołaj o finał, póki ostatnie miasto nie zostanie nasycone.
 ```
 
 ---
 
-## 3. Instrumentarium
+## III. Instrumentarium Cybernetyczne
 
-### 3.1 `warehouse_api`
+### 3.1 `warehouse_api` — Interfejs Transakcyjny
 
-**Opis:** Generyczny wrapper wszystkich wywołań API magazynu. Wszystkie requesty trafiają do `/verify` z `answer: { tool, ...params }`.
+**Natura:** Uniwersalny łącznik z systemem Zygfryda. Wszelkie zapytania kieruje do `/verify`, pakując intencje w strukturę `answer: { tool, ...params }`.
 
-**Schemat:**
+**Schemat Ideowy:**
 
 ```json
 {
 	"tool": "string — np. help, orders, database, signatureGenerator, reset, done",
-	"params": "object (optional) — dodatkowe pola mergowane do payloadu, np. { action: 'get' }"
+	"params": "object — dodatkowe atrybuty scalane w jedną myśl"
 }
 ```
 
-**Zachowanie:** Scala `{ tool, ...params }` i wywołuje `verifyAnswer(config, merged, { exitOnFlag: true })`.
+### 3.2 `fetch_requirements` — Deszyfrator Potrzeb
 
-**Zwraca:** `responseText` z API.
-
-### 3.2 `fetch_requirements`
-
-**Opis:** Pobiera plik JSON z zapotrzebowaniem miast.
-
-**Schemat:** `{}` (brak parametrów)
-
-**Zachowanie:** GET na `HUB_ENDPOINT/dane/food4cities.json` przez `https.get`.
-
-**Zwraca:** Zawartość JSON jako string.
+**Natura:** Narzędzie do pozyskiwania JSON-owych proroctw o głodzie miast. Pobiera dane z `food4cities.json` drogą protokołu HTTPS.
 
 ---
 
-## 4. Przepływ Wykonania
+## IV. Sekwencja Inicjalizacji (Przepływ)
 
 ```
 START
-  ├─ 1. warehouse_api({ tool: "help" })               → poznaj pełne API
-  ├─ 2. fetch_requirements()                           → lista miast + towary
-  ├─ 3. warehouse_api({ tool: "database", query: "show tables" })
-  ├─ 4. warehouse_api({ tool: "database", query: "SELECT ..." })  × kilka zapytań
-  │      → kody destination dla każdego miasta
-  │      → dane użytkownika do creatorID i signatureGenerator
-  ├─ 5. Dla każdego miasta:
-  │      a. warehouse_api signatureGenerator           → SHA1
-  │      b. warehouse_api orders.create               → { creatorID, destination, signature }
-  │      c. warehouse_api orders.append               → { items: { towar: ilość, ... } }
-  ├─ 6. warehouse_api({ tool: "done" })                → finalna weryfikacja + flaga
+  ├─ 1. Gnoza API (`help`)                             → poznanie reguł gry
+  ├─ 2. Lektura Pragnień (`fetch_requirements`)        → lista miast i dóbr
+  ├─ 3. Infiltracja Macierzy (`database`)              → "show tables"
+  ├─ 4. Ekstrakcja Istoty (`SELECT ...`)               → kody przeznaczenia i tożsamości
+  ├─ 5. Cykl Kreacji (Dla każdego miasta):
+  │      a. Kowalstwo Cyfrowe (`signatureGenerator`)   → SHA1
+  │      b. Akt Stwórczy Zamówienia (`orders.create`)  → Tożsamość i Przeznaczenie
+  │      c. Napełnianie Rogu Obfitości (`orders.append`) → Batch towarowy
+  ├─ 6. Pieczęć Ostateczna (`done`)                    → Flaga i chwała
   └─ END
 ```
 
-**Odzysk po błędzie:** `warehouse_api({ tool: "reset" })` → powtórz krok 5 dla wszystkich miast.
-
 ---
 
-## 5. Zależności i Środowisko
+## V. Architektura i Byt Środowiskowy
 
-### Paczki
+### Receptura Projektu
 
-Brak dodatkowych — `@ai-devs/core` + `zod` + wbudowany moduł `https` Node.js.
+Struktura oparta na `index.ts` (serce agenta), `prompts.ts` (dusza i słowo) oraz narzędziach w `src/tools/`, które stanowią przedłużenie woli automatu. Wszystko spięte klamrą `zod` i mocą Node.js.
 
-### Zmienne Środowiskowe
+### Zmienne Ontologiczne (`.env`)
 
 ```env
-OPENAI_API_KEY=...
-OPENAI_MODEL=gpt-5.4-mini
-AI_DEVS_API_KEY=...
-AI_DEVS_TASK_NAME=foodwarehouse
-AI_DEVS_HUB_ENDPOINT=
-```
-
-### Struktura Projektu
-
-```
-src/
-  index.ts                   # runAgent z api: 'completions'
-  prompts.ts                 # SYSTEM_PROMPT + USER_PROMPT
-  tools/
-    index.ts                 # rejestr narzędzi
-    warehouse-api.ts         # wrapper wszystkich wywołań API
-    fetch-requirements.ts    # HTTP GET food4cities.json
+OPENAI_MODEL=gpt-5.4-mini # Mózg elektronowy
+AI_DEVS_TASK_NAME=foodwarehouse # Imię zadania
 ```
 
 ---
 
-## 6. Kluczowe Uwagi Implementacyjne
+## VI. Przestrogi dla Konstruktora
 
-1. `warehouse_api` scala `{ tool, ...params }` — agent przekazuje `params` jako płaski obiekt
-2. `verifyAnswer` w `warehouse-api.ts` używa `exitOnFlag: true` — flaga przechwycona programowo
-3. Batch append: `{ items: { "chleb": 45, "woda": 120 } }` — nie pojedyncze wpisy
-4. Schema SQLite jest nieznana z góry — agent musi ją odkryć via `show tables` + `describe`/`select`
-5. `signatureGenerator` — format wejścia poznany z `help`, zapewne wymaga danych użytkownika z DB
+1. `warehouse_api` to wielka matryca — pamiętaj, by parametry podawać jako płaski, zrozumiały dla systemu obiekt.
+2. `verifyAnswer` posiada zdolność natychmiastowej ekstrakcji flagi — gdy tylko ją ujrzy, zakończy byt procesu.
+3. Baza danych jest tajemnicą — musisz ją odkrywać krok po kroku, niczym archeolog w ruinach obcej cywilizacji.
+4. Podpis SHA1 wymaga danych, które spoczywają w głębinach tabel — nie znajdziesz ich na powierzchni.
 
----
-
-## 7. Kryteria Akceptacji
+## VII. Kryteria Akceptacji
 
 - [ ] `npm run build` — kompiluje bez błędów
 - [ ] Agent odkrywa API via `help` jako pierwszy krok
