@@ -1,7 +1,7 @@
 {
-	"name": "lesson-name-ex-s02e03",
+	"name": "s05e01",
 	"version": "1.0.0",
-	"description": "lessons-task-name-ex-railways",
+	"description": "radiomonitoring",
 	"license": "MIT",
 	"author": "Dawid Dobrowolski",
 	"type": "commonjs",
@@ -22,6 +22,7 @@
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
+		"@eslint/js": "^9.39.4",
 		"@types/node": "^25.4.0",
 		"ts-node": "^10.9.2",
 		"typescript": "^5.9.3",

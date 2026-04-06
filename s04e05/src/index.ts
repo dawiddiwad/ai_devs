@@ -33,6 +33,19 @@ async function main() {
 		serviceTier: 'flex',
 		reasoning: { effort: 'low' },
 		observability,
+		handleNoToolCalls: (context) => {
+			return {
+				action: 'continue',
+				input: [
+					...context.input,
+					{
+						role: 'user',
+						content:
+							'No tools were called, but the task is not complete. Please continue. You are doing great!',
+					},
+				],
+			}
+		},
 	})
 }
 

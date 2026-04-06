@@ -32,45 +32,47 @@ jego prawdziwe imię, powierzchnię, liczebność magazynów oraz numer kontakto
 
 ## 2. Persona i Strategia Promptów
 
-### System Prompt (analyzer.ts)
+### System Prompt (prompts.ts)
 
 ```
-You are an intelligence analyst decoding intercepted radio transmissions.
-Your objective: extract exactly 4 facts about the city codenamed "Syjon".
+You are an intelligence analyst intercepting radio transmissions.
+Your mission: gather all signals first, then identify the city codenamed "Syjon".
+
+## Workflow
+
+1. Call listen() repeatedly until you receive "COLLECTION_COMPLETE"
+2. Analyze all accumulated signals (text + images) to extract the 4 target fields
+3. Call transmit() only when you have all 4 fields with high confidence
 
 ## Target Fields
 
-- cityName: the real Polish city name (not "Syjon")
+- cityName: real Polish city name (not "Syjon")
 - cityArea: area in km², rounded to exactly 2 decimal places, format "12.34"
-- warehousesCount: number of warehouses in the city (integer)
-- phoneNumber: contact phone number string (digits only, no separators)
+- warehousesCount: number of warehouses (integer)
+- phoneNumber: contact phone number (digits only, no separators)
 
 ## Rules
 
-- Return ONLY valid JSON, no markdown, no explanation
-- cityArea must be mathematically rounded, not truncated
-- If a field appears multiple times with conflicting values, prefer the most specific/recent mention
-- Treat all provided materials as potentially partial — piece them together
-
-## Output Format
-
-{"cityName":"...","cityArea":"...","warehousesCount":N,"phoneNumber":"..."}
+- Never call transmit() before COLLECTION_COMPLETE
+- cityArea must be mathematically rounded, not truncated — exactly 2 decimal places
+- If a field appears with conflicting values, prefer the most specific/explicit source
 ```
 
 ---
 
-## 3. Architektura — Pipeline (bez runAgent)
+## 3. Architektura
 
-`runAgent` nie obsługuje multimodalnych wyników narzędzi (tool execute zwraca `string`).
-Używamy własnej pętli z bezpośrednim wywołaniem klienta OpenAI.
+Używamy `runAgent` z narzędziami — core obsługuje `AgentToolBinaryResult` natywnie.
+Obrazy z narzędzi są automatycznie wstrzykiwane jako bloki `image_url` w kolejnej turze LLM.
 
 ```
 src/
-  index.ts      # Orkiestracja: start → collect → analyze → transmit
-  collector.ts  # Pętla listen, zwraca CollectedMaterial[]
-  router.ts     # Klasyfikacja i dekodowanie materiałów
-  analyzer.ts   # Multimodalny call gpt-4o → ExtractedIntel
-  prompts.ts    # System prompt i user prompt template
+  index.ts        # axios POST start → runAgent(completions, tools)
+  prompts.ts      # SYSTEM_PROMPT + USER_PROMPT
+  tools/
+    index.ts      # [listenTool, transmitTool]
+    listen.ts     # POST listen → router → string | AgentToolImageResult
+    transmit.ts   # verifyAnswer({action:'transmit', ...4 fields})
 ```
 
 ---
@@ -79,104 +81,125 @@ src/
 
 ```
 START
-  ├─ 1. POST {action: "start"}               → init sesji
-  ├─ 2. Pętla: POST {action: "listen"}
-  │      ├─ transcription obecna             → CollectedMaterial{type:'text'}
-  │      ├─ attachment obecny (base64)       → router.classify()
-  │      │      ├─ image/*                   → CollectedMaterial{type:'image', mimeType, base64}
-  │      │      ├─ application/json, text/*  → decode → CollectedMaterial{type:'decoded-text'}
-  │      │      └─ inne / gigantyczne        → skip (logger.agent warn)
-  │      └─ code != 100 lub brak danych      → break
-  ├─ 3. router.buildLLMContent(materials)
-  │      ├─ text/decoded-text                → {type:'text', text: content}
-  │      └─ image                            → {type:'image_url', image_url:{url:'data:mime;base64,...'}}
-  ├─ 4. client.chat.completions.create(gpt-4o, messages) → JSON string
-  ├─ 5. JSON.parse → ExtractedIntel
-  ├─ 6. verifyAnswer(config, {action:'transmit', ...intel})
-  └─ END — verifyAnswer wyłapuje flagę i wywołuje process.exit(0)
+  ├─ 1. index.ts: axios POST {action:"start"}        → init sesji
+  ├─ 2. runAgent('completions', [listen, transmit])
+  │      Agent loop:
+  │      ├─ calls listen() repeatedly
+  │      │     ├─ transcription present    → return string
+  │      │     ├─ attachment, image/*      → return AgentToolImageResult{base64, mimeType}
+  │      │     ├─ attachment, json/text/*  → decode locally → return string
+  │      │     ├─ attachment, other/huge   → return "noise, skipped"
+  │      │     └─ code != 100             → return "COLLECTION_COMPLETE"
+  │      ├─ [core auto-injects images as image_url into next user message]
+  │      ├─ agent accumulates full intel in context window
+  │      └─ agent calls transmit({cityName, cityArea, warehousesCount, phoneNumber})
+  └─ END — verifyAnswer wychwytuje flagę → process.exit(0)
 ```
 
 ### Kluczowe Decyzje
 
-- **Nigdy** nie wrzucamy surowego base64 do promptu tekstowego — kosztuje fortunę
-- Materiały zbieramy w całości PRZED analizą (batch, nie streaming)
-- JSON z `/listen` dekodujemy lokalnie; do LLM trafia tylko zawartość
-- `cityArea` musi być stringiem z dokładnie 2 miejscami po przecinku (prawdziwe zaokrąglenie)
+- Obrazy wracają jako `AgentToolImageResult` — **nigdy** surowy base64 jako string
+- JSON/tekst dekodowany lokalnie (`Buffer.from(b64, 'base64').toString()`) przed zwróceniem
+- Nieznane binarne / zbyt duże pliki → string z opisem szumu
+- Sesja startowana deterministycznie przed `runAgent` (nie przez narzędzie)
 
 ---
 
-## 5. Typy Danych
+## 5. Definicje Narzędzi
 
-```ts
-type CollectedMaterial =
-	| { type: 'text'; content: string }
-	| { type: 'image'; mimeType: string; base64: string }
-	| { type: 'decoded-text'; content: string }
+### 5.1 `listen`
 
-type ExtractedIntel = {
-	cityName: string
-	cityArea: string // format: "12.34"
-	warehousesCount: number
-	phoneNumber: string
+**Opis:** Odbiera kolejną porcję sygnału radiowego.
+
+**Schemat wejścia:**
+
+```json
+{ "type": "object", "properties": {}, "required": [] }
+```
+
+**Router:**
+
+```
+response.transcription            → return transcription string
+response.attachment:
+  meta startsWith 'image/'        → AgentToolImageResult { base64, mimeType: meta }
+  meta: 'application/json'/'text' → Buffer.from(attachment,'base64').toString()
+  else OR filesize > 500_000      → "Radio noise, no useful signal"
+response.code != 100              → "COLLECTION_COMPLETE: no more signals"
+```
+
+**Zwraca:** `string | AgentToolImageResult`
+
+---
+
+### 5.2 `transmit`
+
+**Opis:** Wysyła końcowy raport z danymi o mieście Syjon.
+
+**Schemat wejścia:**
+
+```json
+{
+	"type": "object",
+	"properties": {
+		"cityName": { "type": "string" },
+		"cityArea": { "type": "string", "description": "format: '12.34'" },
+		"warehousesCount": { "type": "number" },
+		"phoneNumber": { "type": "string" }
+	},
+	"required": ["cityName", "cityArea", "warehousesCount", "phoneNumber"]
 }
 ```
 
-### Odpowiedź z /listen
+**Zachowanie:** `verifyAnswer(config, { action: 'transmit', ...args })`
 
-```ts
-type ListenResponse = {
-	code: number
-	message: string
-	transcription?: string // materiał tekstowy
-	meta?: string // MIME type dla załącznika
-	attachment?: string // base64 danych binarnych
-	filesize?: number
-}
-```
+**Zwraca:** string z odpowiedzią serwera; flaga wychwycona automatycznie → `process.exit(0)`
 
 ---
 
 ## 6. Zależności i Środowisko
 
-### Narzędzia z @ai-devs/core
+### Importy z @ai-devs/core
 
-| Import               | Zastosowanie                                  |
-| -------------------- | --------------------------------------------- |
-| `createConfig`       | standardowa konfiguracja                      |
-| `createOpenAIClient` | surowy klient OpenAI dla multimodalnego calla |
-| `verifyAnswer`       | POST do hub + wychwycenie flagi               |
-| `logger`             | logowanie operacji                            |
+| Import            | Zastosowanie                                      |
+| ----------------- | ------------------------------------------------- |
+| `createConfig`    | standardowa konfiguracja                          |
+| `runAgent`        | pętla agenta z obsługą binarnych wyników narzędzi |
+| `defineAgentTool` | fabryka narzędzi                                  |
+| `verifyAnswer`    | POST do hub + wychwycenie flagi                   |
+| `logger`          | logowanie operacji                                |
+
+### Typy z @ai-devs/core (do użycia w listen.ts)
+
+```ts
+import type { AgentToolImageResult } from '@ai-devs/core'
+```
 
 ### Zmienne Środowiskowe
 
 ```env
-# Standardowe z .env.example
 AI_DEVS_API_KEY=
 OPENAI_API_KEY=
 HUB_ENDPOINT=
 TASK_NAME=radiomonitoring
 ```
 
-### Brak nowych pakietów
-
-`axios` jest dostępny przez workspace z `@ai-devs/core`.
-
 ---
 
 ## 7. Znane Pułapki
 
-1. **Rozmiar base64** — pliki binarne w base64 są ~33% większe; nie logujesz całości, nie przekazujesz do promptu tekstem
-2. **cityArea format** — backend weryfikuje dokładnie 2 miejsca po przecinku, string `"12.34"`, nie liczba
-3. **Szum radiowy** — wiele odpowiedzi to bałagan; transcription może być pusta lub bezsensowna — LLM poradzi sobie, nie filtruj zbyt agresywnie na poziomie kolekcji
-4. **Koniec sesji** — nasłuch kończy się gdy `code != 100` lub message sugeruje "enough data"; obsłuż oba przypadki
+1. **Rozmiar base64** — nie zwracaj surowego base64 jako stringa; core obsługuje `AgentToolImageResult` poprawnie
+2. **cityArea format** — string `"12.34"`, matematyczne zaokrąglenie, nie obcięcie
+3. **Szum radiowy** — wiele odpowiedzi jest bez wartości; nie filtruj transkrypcji po stronie kodu, LLM poradzi sobie
+4. **Koniec sesji** — `code != 100` LUB message sugerujący "enough data"; obsłuż oba przypadki w listen.ts
 
 ---
 
 ## 8. Kryteria Akceptacji
 
-- [ ] Pętla listen zbiera wszystkie materiały przed analizą
-- [ ] Obrazy trafiają do LLM jako `image_url` z `data:mime;base64,...` — nie jako tekst
-- [ ] JSON / tekst dekodowany lokalnie (Buffer.from(b64, 'base64').toString())
+- [ ] Obrazy zwracane jako `AgentToolImageResult`, nie string z base64
+- [ ] JSON/tekst dekodowany lokalnie przed zwrotem do agenta
+- [ ] Nieznane binarne skipowane z opisem szumu
 - [ ] `cityArea` to string z dokładnie 2 miejscami po przecinku
 - [ ] Flaga wychwytywana przez `verifyAnswer` (regex, nie LLM)
 - [ ] Buduje się czysto: `npm run build`
