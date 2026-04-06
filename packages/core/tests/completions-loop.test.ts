@@ -62,6 +62,114 @@ describe('runCompletionsLoop', () => {
 		expect(client.chatCompletionsCreate).toHaveBeenCalledTimes(1)
 	})
 
+	it('emits generic observability hooks for model, tool, and message lifecycle', async () => {
+		const client = createClientMock()
+		const tool = createTool('lookup', 'tool-result')
+		const observability = {
+			onModelStart: vi.fn().mockResolvedValueOnce('model-1').mockResolvedValueOnce('model-2'),
+			onModelEnd: vi.fn(),
+			onToolStart: vi.fn().mockResolvedValue('tool-1'),
+			onToolEnd: vi.fn(),
+			onMessage: vi.fn(),
+		}
+
+		client.chatCompletionsCreate
+			.mockResolvedValueOnce({
+				choices: [
+					{
+						message: {
+							role: 'assistant',
+							content: 'need tool',
+							tool_calls: [
+								{
+									id: 'call-1',
+									type: 'function',
+									function: {
+										name: 'lookup',
+										arguments: '{"city":"Paris"}',
+									},
+								},
+							],
+						},
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				choices: [
+					{
+						message: {
+							role: 'assistant',
+							content: 'done',
+						},
+					},
+				],
+			})
+
+		await runCompletionsLoop(
+			client,
+			'model',
+			3,
+			undefined,
+			{
+				api: 'completions',
+				tools: [tool],
+				systemPrompt: 'system',
+				userPrompt: 'user',
+				observability,
+			},
+			'run-handle'
+		)
+
+		expect(observability.onModelStart).toHaveBeenNthCalledWith(
+			1,
+			expect.objectContaining({
+				api: 'completions',
+				runHandle: 'run-handle',
+				model: 'model',
+				iterationIndex: 0,
+			})
+		)
+		expect(observability.onModelEnd).toHaveBeenNthCalledWith(
+			1,
+			expect.objectContaining({
+				api: 'completions',
+				runHandle: 'run-handle',
+				modelHandle: 'model-1',
+				iterationIndex: 0,
+			})
+		)
+		expect(observability.onToolStart).toHaveBeenCalledWith({
+			api: 'completions',
+			runHandle: 'run-handle',
+			iterationIndex: 0,
+			name: 'lookup',
+			args: '{"city":"Paris"}',
+		})
+		expect(observability.onToolEnd).toHaveBeenCalledWith({
+			api: 'completions',
+			runHandle: 'run-handle',
+			toolHandle: 'tool-1',
+			iterationIndex: 0,
+			name: 'lookup',
+			args: { city: 'Paris' },
+			result: 'tool-result',
+		})
+		expect(observability.onMessage).toHaveBeenNthCalledWith(1, {
+			api: 'completions',
+			runHandle: 'run-handle',
+			iterationIndex: 0,
+			content: 'need tool',
+			isFinal: false,
+		})
+		expect(observability.onMessage).toHaveBeenNthCalledWith(2, {
+			api: 'completions',
+			runHandle: 'run-handle',
+			iterationIndex: 1,
+			content: 'done',
+			isFinal: false,
+		})
+	})
+
 	it('applies handleMessage rewrites and onMessage callbacks', async () => {
 		const client = createClientMock()
 		const onMessage = vi.fn()

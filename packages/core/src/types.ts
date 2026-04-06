@@ -564,6 +564,116 @@ export type AgentNoToolCallsHandlerResultForApi<Api extends AgentApi> = Api exte
 	? void | AgentResponsesNoToolCallsHandlerResult
 	: void | AgentCompletionsNoToolCallsHandlerResult
 
+export type AgentObservationHandle = unknown
+
+export interface AgentRunStartContext<Api extends AgentApi = AgentApi> {
+	api: Api
+	taskName: string
+	model: string
+	maxIterations: number
+	temperature: number | undefined
+	systemPrompt: string
+	userPrompt: string
+	toolNames: string[]
+}
+
+export interface AgentRunEndContext<Api extends AgentApi = AgentApi> {
+	api: Api
+	runHandle: AgentObservationHandle | undefined
+	result: AgentResult
+}
+
+export interface AgentRunErrorContext<Api extends AgentApi = AgentApi> {
+	api: Api
+	runHandle: AgentObservationHandle | undefined
+	errorMessage: string
+}
+
+export interface AgentModelStartContext<Api extends AgentApi = AgentApi> {
+	api: Api
+	runHandle: AgentObservationHandle | undefined
+	model: string
+	iterationIndex: number
+	request: unknown
+}
+
+export interface AgentModelEndContext<Api extends AgentApi = AgentApi> {
+	api: Api
+	runHandle: AgentObservationHandle | undefined
+	modelHandle: AgentObservationHandle | undefined
+	model: string
+	iterationIndex: number
+	request: unknown
+	response: unknown
+}
+
+export interface AgentModelErrorContext<Api extends AgentApi = AgentApi> {
+	api: Api
+	runHandle: AgentObservationHandle | undefined
+	modelHandle: AgentObservationHandle | undefined
+	model: string
+	iterationIndex: number
+	request: unknown
+	errorMessage: string
+}
+
+export interface AgentToolStartContext<Api extends AgentApi = AgentApi> {
+	api: Api
+	runHandle: AgentObservationHandle | undefined
+	iterationIndex: number
+	name: string
+	args: unknown
+}
+
+export interface AgentToolEndContext<Api extends AgentApi = AgentApi> {
+	api: Api
+	runHandle: AgentObservationHandle | undefined
+	toolHandle: AgentObservationHandle | undefined
+	iterationIndex: number
+	name: string
+	args: unknown
+	result: string
+}
+
+export interface AgentToolErrorContext<Api extends AgentApi = AgentApi> {
+	api: Api
+	runHandle: AgentObservationHandle | undefined
+	toolHandle: AgentObservationHandle | undefined
+	iterationIndex: number
+	name: string
+	args: unknown
+	errorMessage: string
+}
+
+export interface AgentMessageObservationContext<Api extends AgentApi = AgentApi> {
+	api: Api
+	runHandle: AgentObservationHandle | undefined
+	iterationIndex: number
+	content: string
+	isFinal: boolean
+}
+
+export interface AgentObservability<Api extends AgentApi = AgentApi> {
+	withRunContext?: (context: AgentRunStartContext<Api>, run: () => Promise<AgentResult>) => Promise<AgentResult>
+	onRunStart?: (
+		context: AgentRunStartContext<Api>
+	) => AgentObservationHandle | Promise<AgentObservationHandle | void> | void
+	onRunEnd?: (context: AgentRunEndContext<Api>) => Promise<void> | void
+	onRunError?: (context: AgentRunErrorContext<Api>) => Promise<void> | void
+	onModelStart?: (
+		context: AgentModelStartContext<Api>
+	) => AgentObservationHandle | Promise<AgentObservationHandle | void> | void
+	onModelEnd?: (context: AgentModelEndContext<Api>) => Promise<void> | void
+	onModelError?: (context: AgentModelErrorContext<Api>) => Promise<void> | void
+	onToolStart?: (
+		context: AgentToolStartContext<Api>
+	) => AgentObservationHandle | Promise<AgentObservationHandle | void> | void
+	onToolEnd?: (context: AgentToolEndContext<Api>) => Promise<void> | void
+	onToolError?: (context: AgentToolErrorContext<Api>) => Promise<void> | void
+	onMessage?: (context: AgentMessageObservationContext<Api>) => Promise<void> | void
+	flush?: () => Promise<void> | void
+}
+
 /**
  * Shared configuration fields used by both agent APIs.
  *
@@ -764,6 +874,21 @@ interface AgentConfigBase<Api extends AgentApi> {
 	 * ```
 	 */
 	exitOnFlag?: boolean
+	/**
+	 * Optional observability adapter for tracing run, model, tool, and message lifecycle events.
+	 *
+	 * Input:
+	 * - implementation of the generic `AgentObservability` contract
+	 *
+	 * Output:
+	 * - receives lifecycle callbacks during the run when present
+	 *
+	 * @example
+	 * ```ts
+	 * observability: createLangfuseObservability({ traceName: 'warehouse-agent' })
+	 * ```
+	 */
+	observability?: AgentObservability<Api>
 	/**
 	 * Observer hook called after a tool result has been finalized.
 	 *

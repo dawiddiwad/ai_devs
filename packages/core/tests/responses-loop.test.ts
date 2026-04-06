@@ -65,6 +65,95 @@ describe('runResponsesLoop', () => {
 		expect(client.responsesCreate).toHaveBeenCalledTimes(1)
 	})
 
+	it('emits generic observability hooks for model, tool, and message lifecycle', async () => {
+		const client = createClientMock()
+		const tool = createTool('lookup', 'tool-result')
+		const observability = {
+			onModelStart: vi.fn().mockResolvedValueOnce('model-1').mockResolvedValueOnce('model-2'),
+			onModelEnd: vi.fn(),
+			onToolStart: vi.fn().mockResolvedValue('tool-1'),
+			onToolEnd: vi.fn(),
+			onMessage: vi.fn(),
+		}
+
+		client.responsesCreate
+			.mockResolvedValueOnce({
+				output: [
+					{
+						type: 'function_call',
+						call_id: 'call-1',
+						name: 'lookup',
+						arguments: '{"city":"Paris"}',
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				output: [
+					{
+						type: 'message',
+						content: [{ type: 'output_text', text: 'done' }],
+					},
+				],
+			})
+
+		await runResponsesLoop(
+			client,
+			'model',
+			3,
+			undefined,
+			{
+				api: 'responses',
+				tools: [tool],
+				systemPrompt: 'system',
+				userPrompt: 'user',
+				observability,
+			},
+			'run-handle'
+		)
+
+		expect(observability.onModelStart).toHaveBeenNthCalledWith(
+			1,
+			expect.objectContaining({
+				api: 'responses',
+				runHandle: 'run-handle',
+				model: 'model',
+				iterationIndex: 0,
+			})
+		)
+		expect(observability.onModelEnd).toHaveBeenNthCalledWith(
+			1,
+			expect.objectContaining({
+				api: 'responses',
+				runHandle: 'run-handle',
+				modelHandle: 'model-1',
+				iterationIndex: 0,
+			})
+		)
+		expect(observability.onToolStart).toHaveBeenCalledWith({
+			api: 'responses',
+			runHandle: 'run-handle',
+			iterationIndex: 0,
+			name: 'lookup',
+			args: '{"city":"Paris"}',
+		})
+		expect(observability.onToolEnd).toHaveBeenCalledWith({
+			api: 'responses',
+			runHandle: 'run-handle',
+			toolHandle: 'tool-1',
+			iterationIndex: 0,
+			name: 'lookup',
+			args: { city: 'Paris' },
+			result: 'tool-result',
+		})
+		expect(observability.onMessage).toHaveBeenCalledWith({
+			api: 'responses',
+			runHandle: 'run-handle',
+			iterationIndex: 1,
+			content: 'done',
+			isFinal: false,
+		})
+	})
+
 	it('applies handleMessage rewrites and onMessage callbacks', async () => {
 		const client = createClientMock()
 		const onMessage = vi.fn()

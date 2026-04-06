@@ -2,10 +2,23 @@ export { createConfig, requireEnv, optionalEnv } from './config.js'
 export { logger } from './logger.js'
 export { defineAgentTool } from './tool-factory.js'
 export { createOpenAIClient } from './openai-client.js'
+export { createLangfuseObservability } from './langfuse-observability.js'
 export { runAgent } from './run-agent.js'
 export { verifyAnswer, captureFlag } from './verify.js'
 export type {
 	AgentApi,
+	AgentObservationHandle,
+	AgentObservability,
+	AgentRunStartContext,
+	AgentRunEndContext,
+	AgentRunErrorContext,
+	AgentModelStartContext,
+	AgentModelEndContext,
+	AgentModelErrorContext,
+	AgentToolStartContext,
+	AgentToolEndContext,
+	AgentToolErrorContext,
+	AgentMessageObservationContext,
 	AgentTool,
 	AgentConfig,
 	AgentResponsesConfig,
@@ -32,3 +45,4 @@ export type {
 	CreateConfigResult,
 	VerifyResult,
 } from './types.js'
+export type { CreateLangfuseObservabilityOptions } from './langfuse-observability.js'

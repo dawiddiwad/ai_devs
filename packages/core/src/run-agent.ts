@@ -1,8 +1,9 @@
 import { logger } from './logger.js'
 import { createOpenAIClient } from './openai-client.js'
+import { safelyObserve } from './observability.js'
 import { runCompletionsLoop } from './completions-loop.js'
 import { runResponsesLoop } from './responses-loop.js'
-import type { AgentApi, AgentConfig, AgentResult, CoreConfig } from './types.js'
+import type { AgentApi, AgentConfig, AgentObservability, AgentResult, CoreConfig } from './types.js'
 
 /**
  * Runs an agent loop using either the Responses API or the Chat Completions API,
@@ -70,9 +71,20 @@ export async function runAgent<Api extends AgentApi>(
  */
 export async function runAgent(coreConfig: CoreConfig, agentConfig: AgentConfig): Promise<AgentResult> {
 	const client = createOpenAIClient(coreConfig)
+	const observability = agentConfig.observability as AgentObservability | undefined
 	const model = agentConfig.model ?? coreConfig.openaiModel
 	const maxIterations = agentConfig.maxIterations ?? 20
 	const temperature = agentConfig.temperature ?? coreConfig.openaiTemperature
+	const runContext = {
+		api: agentConfig.api,
+		taskName: coreConfig.taskName,
+		model,
+		maxIterations,
+		temperature,
+		systemPrompt: agentConfig.systemPrompt,
+		userPrompt: agentConfig.userPrompt,
+		toolNames: agentConfig.tools.map((tool) => tool.definition.name),
+	} as const
 
 	logger.agent('info', 'Starting agent', {
 		api: agentConfig.api,
@@ -81,9 +93,38 @@ export async function runAgent(coreConfig: CoreConfig, agentConfig: AgentConfig)
 		toolCount: agentConfig.tools.length,
 	})
 
-	if (agentConfig.api === 'responses') {
-		return runResponsesLoop(client, model, maxIterations, temperature, agentConfig)
+	const executeRun = async (): Promise<AgentResult> => {
+		const runHandle = await safelyObserve('onRunStart', () => observability?.onRunStart?.(runContext), undefined)
+
+		try {
+			const result =
+				agentConfig.api === 'responses'
+					? await runResponsesLoop(client, model, maxIterations, temperature, agentConfig, runHandle)
+					: await runCompletionsLoop(client, model, maxIterations, temperature, agentConfig, runHandle)
+
+			await safelyObserve(
+				'onRunEnd',
+				() => observability?.onRunEnd?.({ api: agentConfig.api, runHandle, result }),
+				undefined
+			)
+			await safelyObserve('flush', () => observability?.flush?.(), undefined)
+
+			return result
+		} catch (error) {
+			await safelyObserve(
+				'onRunError',
+				() =>
+					observability?.onRunError?.({
+						api: agentConfig.api,
+						runHandle,
+						errorMessage: error instanceof Error ? error.message : String(error),
+					}),
+				undefined
+			)
+			await safelyObserve('flush', () => observability?.flush?.(), undefined)
+			throw error
+		}
 	}
 
-	return runCompletionsLoop(client, model, maxIterations, temperature, agentConfig)
+	return observability?.withRunContext ? observability.withRunContext(runContext, executeRun) : executeRun()
 }

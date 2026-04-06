@@ -2,11 +2,13 @@
 
 Workspace for building AI agents that solve complex tasks using LLMs and tools. 
 
-I've designed it as part of my journey to learn and experiment with OpenAI API during an online course.
+I've designed it as part of my journey to learn and experiment with OpenAI API during an online course. 
 
-The goal was to build a modular structure that supports a wide variety of designs and use cases. Each folder is an independent implementation, sharing core infrastructure but no code between them. 
+The goal was to build a modular structure that supports a wide variety of designs and use cases.
 
-Each solution lives in its own `sXXeYY/` folder. New solutions are built on top of `@ai-devs/core` - my library that handles the agent loop, tool dispatch, flag capture, and logging. The `template/` folder is a basic scaffold for new agents.
+Each solution lives in its own `sXXeYY/` folder. New solutions are built on top of `@ai-devs/core` - my custom library that handles the openai API agent loop for both completions and responses, tool dispatch, flag capture, logging and observability. 
+
+The `template/` folder is a basic scaffold for new agents.
 
 ## Launchpad
 
@@ -43,6 +45,11 @@ OPENAI_MODEL=gpt-5.4-nano
 AI_DEVS_API_KEY=...
 AI_DEVS_TASK_NAME=your-task-name
 AI_DEVS_HUB_ENDPOINT=https://...
+
+# Optional Langfuse tracing
+LANGFUSE_PUBLIC_KEY=...
+LANGFUSE_SECRET_KEY=...
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
 ```
 
 ### 4. Install dependencies
@@ -64,6 +71,33 @@ You only need to touch three files:
 | `src/tools/index.ts` | Register your tools in the array |
 
 `src/index.ts` wires everything together and rarely needs changes.
+
+#### Optional Observability
+
+Example of how to set it up with pre-built adapter for [Langfuse](https://langfuse.com/):
+
+```ts
+import { createLangfuseObservability, runAgent } from '@ai-devs/core'
+
+const observability = createLangfuseObservability({
+	publicKey: config.langfusePublicKey,
+	secretKey: config.langfuseSecretKey,
+	baseUrl: config.langfuseBaseUrl,
+	traceName: `task:${config.taskName}`,
+	metadata: { task: config.taskName },
+	sessionId: `${config.taskName}-${Date.now()}`,
+})
+
+await runAgent(config, {
+	api: 'responses',
+	tools: [your, tools, here],
+	systemPrompt: SYSTEM_PROMPT,
+	userPrompt: USER_PROMPT,
+	observability,
+})
+```
+
+Other observability can be implemented by custom adapters using `AgentObservability` interface and passing them to `runAgent`.
 
 ### 6. Run
 

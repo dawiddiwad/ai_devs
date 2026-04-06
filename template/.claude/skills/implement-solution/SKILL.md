@@ -20,9 +20,10 @@ argument-hint: 'Provide task folder name (e.g. s03e04)'
 1. Read `spec.md` — this is the authoritative source. Follow it strictly.
 2. Read `packages/core/src/index.ts` for available exports from `@ai-devs/core`
 3. Review the [architecture patterns](./references/architecture.md) for established conventions
-4. Scaffold project structure if starting fresh (copy from template)
-5. Implement in order: prompts → tools → index
-6. Run `npm run build` to verify — fix all errors before declaring done
+4. Review the [observability reference](./references/observability.md) when tracing is needed
+5. Scaffold project structure if starting fresh (copy from template)
+6. Implement in order: prompts → tools → index
+7. Run `npm run build` to verify — fix all errors before declaring done
 
 ## Rules
 

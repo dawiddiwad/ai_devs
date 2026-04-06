@@ -1,8 +1,10 @@
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
 import { logger } from './logger.js'
+import { safelyObserve } from './observability.js'
 import { captureFlag } from './verify.js'
 import { createOpenAIClient } from './openai-client.js'
 import type {
+	AgentObservationHandle,
 	AgentCompletionsConfig,
 	AgentMessageHandlerResult,
 	AgentNoToolCallsHandlerResult,
@@ -253,7 +255,8 @@ async function handleCompletionsMessage(
 	config: AgentCompletionsConfig,
 	iterationIndex: number,
 	content: string,
-	state: CompletionsLoopState
+	state: CompletionsLoopState,
+	runHandle: AgentObservationHandle | undefined
 ): Promise<CompletionsMessagePhaseResult> {
 	const handledMessage = await resolveMessageHandling(config, iterationIndex, content, state.messages)
 	const nextState = {
@@ -271,6 +274,18 @@ async function handleCompletionsMessage(
 		iterationIndex,
 		handledMessage.isFinal
 	)
+	await safelyObserve(
+		'onMessage',
+		() =>
+			config.observability?.onMessage?.({
+				api: 'completions',
+				runHandle,
+				iterationIndex,
+				content: handledMessage.content,
+				isFinal: exit !== null,
+			}),
+		undefined
+	)
 
 	return {
 		state: flagCaptured ? { ...nextState, flagCaptured } : nextState,
@@ -282,11 +297,24 @@ async function handleCompletionsToolCall(
 	config: AgentCompletionsConfig,
 	iterationIndex: number,
 	toolCall: CompletionsFunctionToolCall,
-	state: CompletionsLoopState
+	state: CompletionsLoopState,
+	runHandle: AgentObservationHandle | undefined
 ): Promise<CompletionsToolCallPhaseResult> {
 	logger.tool('info', `Tool call: ${toolCall.function.name}`, {
 		args: toolCall.function.arguments.slice(0, 200),
 	})
+	const toolHandle = await safelyObserve(
+		'onToolStart',
+		() =>
+			config.observability?.onToolStart?.({
+				api: 'completions',
+				runHandle,
+				iterationIndex,
+				name: toolCall.function.name,
+				args: toolCall.function.arguments,
+			}),
+		undefined
+	)
 
 	try {
 		const parsedArgs = JSON.parse(toolCall.function.arguments)
@@ -305,6 +333,20 @@ async function handleCompletionsToolCall(
 		const nextState = { ...state, messages: nextMessages }
 
 		await config.onToolCall?.(toolCall.function.name, parsedArgs, handledToolCall.result)
+		await safelyObserve(
+			'onToolEnd',
+			() =>
+				config.observability?.onToolEnd?.({
+					api: 'completions',
+					runHandle,
+					toolHandle,
+					iterationIndex,
+					name: toolCall.function.name,
+					args: parsedArgs,
+					result: handledToolCall.result,
+				}),
+			undefined
+		)
 
 		const { flagCaptured, exit } = resolveFinalState(
 			config,
@@ -318,6 +360,20 @@ async function handleCompletionsToolCall(
 			exit,
 		}
 	} catch (error) {
+		await safelyObserve(
+			'onToolError',
+			() =>
+				config.observability?.onToolError?.({
+					api: 'completions',
+					runHandle,
+					toolHandle,
+					iterationIndex,
+					name: toolCall.function.name,
+					args: toolCall.function.arguments,
+					errorMessage: error instanceof Error ? error.message : String(error),
+				}),
+			undefined
+		)
 		return {
 			state: {
 				...state,
@@ -363,7 +419,8 @@ export async function runCompletionsLoop(
 	model: string,
 	maxIterations: number,
 	temperature: number | undefined,
-	config: AgentCompletionsConfig
+	config: AgentCompletionsConfig,
+	runHandle?: AgentObservationHandle
 ): Promise<AgentResult> {
 	const toolDefs: ChatCompletionTool[] = config.tools.map((tool) => ({
 		type: 'function' as const,
@@ -387,9 +444,54 @@ export async function runCompletionsLoop(
 	for (let iterationIndex = 0; iterationIndex < maxIterations; iterationIndex++) {
 		logger.agent('info', `Iteration ${iterationIndex + 1}/${maxIterations}`)
 
-		const response = await client.chat.completions.create(
-			createCompletionsRequest(model, temperature, state.messages, toolDefs)
+		const request = createCompletionsRequest(model, temperature, state.messages, toolDefs)
+		const modelHandle = await safelyObserve(
+			'onModelStart',
+			() =>
+				config.observability?.onModelStart?.({
+					api: 'completions',
+					runHandle,
+					model,
+					iterationIndex,
+					request,
+				}),
+			undefined
 		)
+
+		let response: Awaited<ReturnType<typeof client.chat.completions.create>>
+		try {
+			response = await client.chat.completions.create(request)
+			await safelyObserve(
+				'onModelEnd',
+				() =>
+					config.observability?.onModelEnd?.({
+						api: 'completions',
+						runHandle,
+						modelHandle,
+						model,
+						iterationIndex,
+						request,
+						response,
+					}),
+				undefined
+			)
+		} catch (error) {
+			await safelyObserve(
+				'onModelError',
+				() =>
+					config.observability?.onModelError?.({
+						api: 'completions',
+						runHandle,
+						modelHandle,
+						model,
+						iterationIndex,
+						request,
+						errorMessage: error instanceof Error ? error.message : String(error),
+					}),
+				undefined
+			)
+			throw error
+		}
 		const message = response.choices[0]?.message
 
 		if (!message) {
@@ -400,7 +502,13 @@ export async function runCompletionsLoop(
 		state = { ...state, messages: appendAssistantMessage(state.messages, message) }
 
 		if (message.content) {
-			const messagePhase = await handleCompletionsMessage(config, iterationIndex, message.content, state)
+			const messagePhase = await handleCompletionsMessage(
+				config,
+				iterationIndex,
+				message.content,
+				state,
+				runHandle
+			)
 			state = messagePhase.state
 
 			if (messagePhase.exit) {
@@ -430,7 +538,7 @@ export async function runCompletionsLoop(
 				continue
 			}
 
-			const toolCallPhase = await handleCompletionsToolCall(config, iterationIndex, toolCall, state)
+			const toolCallPhase = await handleCompletionsToolCall(config, iterationIndex, toolCall, state, runHandle)
 			state = toolCallPhase.state
 
 			if (toolCallPhase.exit) {

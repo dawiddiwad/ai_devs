@@ -1,8 +1,10 @@
 import type { ResponseInput, Tool } from 'openai/resources/responses/responses'
 import { logger } from './logger.js'
+import { safelyObserve } from './observability.js'
 import { captureFlag } from './verify.js'
 import { createOpenAIClient } from './openai-client.js'
 import type {
+	AgentObservationHandle,
 	AgentMessageHandlerResult,
 	AgentNoToolCallsHandlerResult,
 	AgentResult,
@@ -222,7 +224,8 @@ async function handleResponsesMessage(
 	config: AgentResponsesConfig,
 	iterationIndex: number,
 	text: string,
-	state: ResponsesLoopState
+	state: ResponsesLoopState,
+	runHandle: AgentObservationHandle | undefined
 ): Promise<ResponsesMessagePhaseResult> {
 	const handledMessage = await resolveMessageHandling(config, iterationIndex, text, state.inputMessages)
 	const nextState = {
@@ -240,6 +243,18 @@ async function handleResponsesMessage(
 		iterationIndex,
 		handledMessage.isFinal
 	)
+	await safelyObserve(
+		'onMessage',
+		() =>
+			config.observability?.onMessage?.({
+				api: 'responses',
+				runHandle,
+				iterationIndex,
+				content: handledMessage.content,
+				isFinal: exit !== null,
+			}),
+		undefined
+	)
 
 	return {
 		state: flagCaptured ? { ...nextState, flagCaptured } : nextState,
@@ -251,9 +266,22 @@ async function handleResponsesToolCall(
 	config: AgentResponsesConfig,
 	iterationIndex: number,
 	item: ResponsesFunctionCallItem,
-	state: ResponsesLoopState
+	state: ResponsesLoopState,
+	runHandle: AgentObservationHandle | undefined
 ): Promise<ResponsesToolCallPhaseResult> {
 	logger.tool('info', `Tool call: ${item.name}`, { args: item.arguments.slice(0, 200) })
+	const toolHandle = await safelyObserve(
+		'onToolStart',
+		() =>
+			config.observability?.onToolStart?.({
+				api: 'responses',
+				runHandle,
+				iterationIndex,
+				name: item.name,
+				args: item.arguments,
+			}),
+		undefined
+	)
 
 	try {
 		const parsedArgs = JSON.parse(item.arguments)
@@ -272,6 +300,20 @@ async function handleResponsesToolCall(
 		const nextState = { ...state, inputMessages: nextInputMessages }
 
 		await config.onToolCall?.(item.name, parsedArgs, handledToolCall.result)
+		await safelyObserve(
+			'onToolEnd',
+			() =>
+				config.observability?.onToolEnd?.({
+					api: 'responses',
+					runHandle,
+					toolHandle,
+					iterationIndex,
+					name: item.name,
+					args: parsedArgs,
+					result: handledToolCall.result,
+				}),
+			undefined
+		)
 
 		const { flagCaptured, exit } = resolveFinalState(
 			config,
@@ -285,6 +327,20 @@ async function handleResponsesToolCall(
 			exit,
 		}
 	} catch (error) {
+		await safelyObserve(
+			'onToolError',
+			() =>
+				config.observability?.onToolError?.({
+					api: 'responses',
+					runHandle,
+					toolHandle,
+					iterationIndex,
+					name: item.name,
+					args: item.arguments,
+					errorMessage: error instanceof Error ? error.message : String(error),
+				}),
+			undefined
+		)
 		return {
 			state: {
 				...state,
@@ -330,7 +386,8 @@ export async function runResponsesLoop(
 	model: string,
 	maxIterations: number,
 	temperature: number | undefined,
-	config: AgentResponsesConfig
+	config: AgentResponsesConfig,
+	runHandle?: AgentObservationHandle
 ): Promise<AgentResult> {
 	const toolDefs = config.tools.map((tool) => tool.definition) satisfies Tool[]
 	const conversation = await client.conversations.create({
@@ -349,9 +406,61 @@ export async function runResponsesLoop(
 	for (let iterationIndex = 0; iterationIndex < maxIterations; iterationIndex++) {
 		logger.agent('info', `Iteration ${iterationIndex + 1}/${maxIterations}`)
 
-		const response = await client.responses.create(
-			createResponsesRequest(model, temperature, config, conversation.id, state.inputMessages, toolDefs)
+		const request = createResponsesRequest(
+			model,
+			temperature,
+			config,
+			conversation.id,
+			state.inputMessages,
+			toolDefs
 		)
+		const modelHandle = await safelyObserve(
+			'onModelStart',
+			() =>
+				config.observability?.onModelStart?.({
+					api: 'responses',
+					runHandle,
+					model,
+					iterationIndex,
+					request,
+				}),
+			undefined
+		)
+
+		let response: Awaited<ReturnType<typeof client.responses.create>>
+		try {
+			response = await client.responses.create(request)
+			await safelyObserve(
+				'onModelEnd',
+				() =>
+					config.observability?.onModelEnd?.({
+						api: 'responses',
+						runHandle,
+						modelHandle,
+						model,
+						iterationIndex,
+						request,
+						response,
+					}),
+				undefined
+			)
+		} catch (error) {
+			await safelyObserve(
+				'onModelError',
+				() =>
+					config.observability?.onModelError?.({
+						api: 'responses',
+						runHandle,
+						modelHandle,
+						model,
+						iterationIndex,
+						request,
+						errorMessage: error instanceof Error ? error.message : String(error),
+					}),
+				undefined
+			)
+			throw error
+		}
 
 		state = { ...state, inputMessages: [] }
 
@@ -362,7 +471,7 @@ export async function runResponsesLoop(
 					continue
 				}
 
-				const messagePhase = await handleResponsesMessage(config, iterationIndex, text, state)
+				const messagePhase = await handleResponsesMessage(config, iterationIndex, text, state, runHandle)
 				state = messagePhase.state
 
 				if (messagePhase.exit) {
@@ -371,7 +480,7 @@ export async function runResponsesLoop(
 			}
 
 			if (item.type === 'function_call') {
-				const toolCallPhase = await handleResponsesToolCall(config, iterationIndex, item, state)
+				const toolCallPhase = await handleResponsesToolCall(config, iterationIndex, item, state, runHandle)
 				state = toolCallPhase.state
 
 				if (toolCallPhase.exit) {

@@ -20,12 +20,16 @@
 		"format:fix": "prettier . --write"
 	},
 	"dependencies": {
+		"@langfuse/otel": "^5.0.0",
+		"@langfuse/tracing": "^5.0.0",
+		"@opentelemetry/sdk-node": "^0.206.0",
 		"axios": "^1.13.6",
 		"dotenv": "^17.3.1",
 		"openai": "^6.27.0",
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
+		"@eslint/js": "^9.39.4",
 		"@types/node": "^25.4.0",
 		"eslint": "^9.39.4",
 		"eslint-config-prettier": "^10.1.8",

@@ -169,6 +169,7 @@ main().catch((error) => {
 - Prefer `createConfig()` for env loading.
 - Add custom env fields through `createConfig({ requiredEnv, optionalEnv, overrides })`.
 - Use `runAgent()` for standard agent loops.
+- `runAgent()` supports optional `observability`; use `createLangfuseObservability()` for explicit Langfuse tracing.
 - Use `defineAgentTool()` for tools and return string payloads from tool handlers.
 - Use `verifyAnswer()` and `captureFlag()` from `@ai-devs/core`; do not reimplement flag parsing with LLM logic.
 
