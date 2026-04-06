@@ -1,6 +1,7 @@
 import type { ResponseInput, Tool } from 'openai/resources/responses/responses'
 import { logger } from './logger.js'
 import { safelyObserve } from './observability.js'
+import { getToolResultText, serializeToolResultForResponses } from './tool-result.js'
 import { captureFlag } from './verify.js'
 import { createOpenAIClient } from './openai-client.js'
 import type {
@@ -9,6 +10,7 @@ import type {
 	AgentNoToolCallsHandlerResult,
 	AgentResult,
 	AgentResponsesConfig,
+	AgentToolResult,
 	AgentToolCallHandlerResult,
 } from './types.js'
 
@@ -111,8 +113,11 @@ function extractResponseMessageText(contentItems: Array<{ type: string; text?: s
 		.join('')
 }
 
-function appendResponsesToolOutput(input: ResponseInput, callId: string, output: string): ResponseInput {
-	return [...input, { type: 'function_call_output', call_id: callId, output }]
+function appendResponsesToolOutput(input: ResponseInput, callId: string, output: AgentToolResult): ResponseInput {
+	return [
+		...input,
+		{ type: 'function_call_output', call_id: callId, output: serializeToolResultForResponses(output) },
+	]
 }
 
 function appendResponsesToolError(input: ResponseInput, callId: string, error: unknown): ResponseInput {
@@ -123,9 +128,13 @@ function appendResponsesToolError(input: ResponseInput, callId: string, error: u
 	return appendResponsesToolOutput(input, callId, JSON.stringify({ error: errorMessage }))
 }
 
-function createDefaultToolExecutor(config: AgentResponsesConfig, name: string, args: unknown): () => Promise<string> {
+function createDefaultToolExecutor(
+	config: AgentResponsesConfig,
+	name: string,
+	args: unknown
+): () => Promise<AgentToolResult> {
 	const tool = config.tools.find((candidate) => candidate.definition.name === name)
-	let defaultResultPromise: Promise<string> | undefined
+	let defaultResultPromise: Promise<AgentToolResult> | undefined
 
 	return () => {
 		if (!defaultResultPromise) {
@@ -163,8 +172,8 @@ async function resolveToolCallHandling(
 	name: string,
 	args: unknown,
 	input: ResponseInput,
-	executeDefault: () => Promise<string>
-): Promise<{ result: string; input: ResponseInput; inputWasReplaced: boolean; isFinal: boolean }> {
+	executeDefault: () => Promise<AgentToolResult>
+): Promise<{ result: AgentToolResult; input: ResponseInput; inputWasReplaced: boolean; isFinal: boolean }> {
 	const handled = await config.handleToolCall?.({
 		api: 'responses',
 		iterationIndex,
@@ -317,7 +326,7 @@ async function handleResponsesToolCall(
 
 		const { flagCaptured, exit } = resolveFinalState(
 			config,
-			handledToolCall.result,
+			getToolResultText(handledToolCall.result),
 			iterationIndex,
 			handledToolCall.isFinal
 		)

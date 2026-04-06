@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentTool } from '../src/index.js'
+import type { AgentTool, AgentToolResult } from '../src/index.js'
 import { runResponsesLoop } from '../src/responses-loop.js'
 
 function createClientMock() {
@@ -21,7 +21,7 @@ function createClientMock() {
 	}
 }
 
-function createTool(name: string, result: string): AgentTool {
+function createTool(name: string, result: AgentToolResult): AgentTool {
 	return {
 		definition: {
 			type: 'function',
@@ -268,6 +268,63 @@ describe('runResponsesLoop', () => {
 			iterations: 2,
 			flagCaptured: null,
 		})
+	})
+
+	it('serializes binary file tool results for the responses API', async () => {
+		const client = createClientMock()
+		const tool = createTool('open_manual', {
+			type: 'file',
+			base64: 'ZmFrZS1wZGY=',
+			mimeType: 'application/pdf',
+			filename: 'manual.pdf',
+			text: 'Read page 3 first.',
+		})
+
+		client.responsesCreate
+			.mockResolvedValueOnce({
+				output: [
+					{
+						type: 'function_call',
+						call_id: 'call-1',
+						name: 'open_manual',
+						arguments: '{}',
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				output: [
+					{
+						type: 'message',
+						content: [{ type: 'output_text', text: 'done' }],
+					},
+				],
+			})
+
+		await runResponsesLoop(client, 'model', 3, undefined, {
+			api: 'responses',
+			tools: [tool],
+			systemPrompt: 'system',
+			userPrompt: 'user',
+		})
+
+		expect(client.responsesCreate.mock.calls[1]?.[0]).toEqual(
+			expect.objectContaining({
+				input: [
+					{
+						type: 'function_call_output',
+						call_id: 'call-1',
+						output: [
+							{ type: 'input_text', text: 'Read page 3 first.' },
+							{
+								type: 'input_file',
+								filename: 'manual.pdf',
+								file_data: 'data:application/pdf;base64,ZmFrZS1wZGY=',
+							},
+						],
+					},
+				],
+			})
+		)
 	})
 
 	it('continues and then finalizes through handleNoToolCalls', async () => {

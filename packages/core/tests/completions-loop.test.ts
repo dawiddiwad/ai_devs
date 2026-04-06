@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentTool } from '../src/index.js'
+import type { AgentTool, AgentToolResult } from '../src/index.js'
 import { runCompletionsLoop } from '../src/completions-loop.js'
 
 function createClientMock() {
@@ -17,7 +17,7 @@ function createClientMock() {
 	}
 }
 
-function createTool(name: string, result: string): AgentTool {
+function createTool(name: string, result: AgentToolResult): AgentTool {
 	return {
 		definition: {
 			type: 'function',
@@ -306,6 +306,84 @@ describe('runCompletionsLoop', () => {
 			iterations: 2,
 			flagCaptured: null,
 		})
+	})
+
+	it('adds multimodal follow-up content for binary tool results in completions', async () => {
+		const client = createClientMock()
+		const tool = createTool('inspect_screenshot', {
+			type: 'image',
+			base64: 'ZmFrZS1pbWFnZQ==',
+			mimeType: 'image/png',
+			detail: 'high',
+			text: 'Check the red warning badge in the header.',
+		})
+
+		client.chatCompletionsCreate
+			.mockResolvedValueOnce({
+				choices: [
+					{
+						message: {
+							role: 'assistant',
+							content: 'need tool',
+							tool_calls: [
+								{
+									id: 'call-1',
+									type: 'function',
+									function: {
+										name: 'inspect_screenshot',
+										arguments: '{}',
+									},
+								},
+							],
+						},
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				choices: [
+					{
+						message: {
+							role: 'assistant',
+							content: 'done',
+						},
+					},
+				],
+			})
+
+		await runCompletionsLoop(client, 'model', 3, undefined, {
+			api: 'completions',
+			tools: [tool],
+			systemPrompt: 'system',
+			userPrompt: 'user',
+		})
+
+		expect(client.chatCompletionsCreate.mock.calls[1]?.[0]).toEqual(
+			expect.objectContaining({
+				messages: expect.arrayContaining([
+					expect.objectContaining({
+						role: 'tool',
+						tool_call_id: 'call-1',
+						content: 'Check the red warning badge in the header.',
+					}),
+					{
+						role: 'user',
+						content: [
+							{
+								type: 'text',
+								text: 'Tool "inspect_screenshot" returned the attached image. Use it as the tool result for call "call-1". Tool note: Check the red warning badge in the header.',
+							},
+							{
+								type: 'image_url',
+								image_url: {
+									url: 'data:image/png;base64,ZmFrZS1pbWFnZQ==',
+									detail: 'high',
+								},
+							},
+						],
+					},
+				]),
+			})
+		)
 	})
 
 	it('continues and then finalizes through handleNoToolCalls', async () => {

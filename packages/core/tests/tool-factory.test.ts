@@ -33,6 +33,29 @@ describe('defineAgentTool', () => {
 		expect(handler).toHaveBeenCalledWith({ city: 'Berlin', count: 2 })
 	})
 
+	it('passes through binary tool results', async () => {
+		const tool = defineAgentTool({
+			name: 'render_map',
+			description: 'Renders a map preview',
+			schema: z.object({ city: z.string() }),
+			handler: vi.fn().mockResolvedValue({
+				type: 'image',
+				base64: 'aGVsbG8=',
+				mimeType: 'image/png',
+				detail: 'high',
+				text: 'Focus on the highlighted route.',
+			}),
+		})
+
+		await expect(tool.execute({ city: 'Berlin' })).resolves.toEqual({
+			type: 'image',
+			base64: 'aGVsbG8=',
+			mimeType: 'image/png',
+			detail: 'high',
+			text: 'Focus on the highlighted route.',
+		})
+	})
+
 	it('returns an error payload for invalid args', async () => {
 		const tool = defineAgentTool({
 			name: 'lookup_city',

@@ -2,12 +2,32 @@ import type { ChatCompletionMessageParam } from 'openai/resources/chat/completio
 import type { FunctionTool, ResponseInput } from 'openai/resources/responses/responses'
 import type { ReasoningEffort } from 'openai/resources/shared'
 
+export interface AgentToolImageResult {
+	type: 'image'
+	base64: string
+	mimeType: string
+	detail?: 'low' | 'high' | 'auto' | 'original'
+	text?: string
+}
+
+export interface AgentToolFileResult {
+	type: 'file'
+	base64: string
+	mimeType: string
+	filename: string
+	text?: string
+}
+
+export type AgentToolBinaryResult = AgentToolImageResult | AgentToolFileResult
+
+export type AgentToolResult = string | AgentToolBinaryResult
+
 /**
  * Executable tool contract consumed by the agent runner.
  *
  * `definition` is sent to OpenAI so the model can decide when to call the tool.
- * `execute` receives already-parsed arguments and must return a string payload that
- * is fed back into the loop as the tool result.
+ * `execute` receives already-parsed arguments and must return a payload that is fed
+ * back into the loop as the tool result.
  *
  * @example
  * ```ts
@@ -30,7 +50,7 @@ import type { ReasoningEffort } from 'openai/resources/shared'
  */
 export interface AgentTool {
 	definition: FunctionTool
-	execute: (args: unknown) => Promise<string>
+	execute: (args: unknown) => Promise<AgentToolResult>
 }
 
 /**
@@ -252,7 +272,7 @@ export interface AgentResponsesToolCallContext {
 	name: string
 	args: unknown
 	input: ResponseInput
-	executeDefault: () => Promise<string>
+	executeDefault: () => Promise<AgentToolResult>
 }
 
 /**
@@ -286,7 +306,7 @@ export interface AgentCompletionsToolCallContext {
 	name: string
 	args: unknown
 	messages: ChatCompletionMessageParam[]
-	executeDefault: () => Promise<string>
+	executeDefault: () => Promise<AgentToolResult>
 }
 
 /**
@@ -324,8 +344,8 @@ export type AgentToolCallContext = AgentResponsesToolCallContext | AgentCompleti
  * ```
  */
 export type AgentResponsesToolCallHandlerResult =
-	| { action: 'continue'; result?: string; input?: ResponseInput }
-	| { action: 'final'; result: string; input?: ResponseInput }
+	| { action: 'continue'; result?: AgentToolResult; input?: ResponseInput }
+	| { action: 'final'; result: AgentToolResult; input?: ResponseInput }
 
 /**
  * Result returned from `handleToolCall` for the Chat Completions API.
@@ -346,8 +366,8 @@ export type AgentResponsesToolCallHandlerResult =
  * ```
  */
 export type AgentCompletionsToolCallHandlerResult =
-	| { action: 'continue'; result?: string; messages?: ChatCompletionMessageParam[] }
-	| { action: 'final'; result: string; messages?: ChatCompletionMessageParam[] }
+	| { action: 'continue'; result?: AgentToolResult; messages?: ChatCompletionMessageParam[] }
+	| { action: 'final'; result: AgentToolResult; messages?: ChatCompletionMessageParam[] }
 
 /**
  * Union of all possible `handleToolCall` results.
@@ -632,7 +652,7 @@ export interface AgentToolEndContext<Api extends AgentApi = AgentApi> {
 	iterationIndex: number
 	name: string
 	args: unknown
-	result: string
+	result: AgentToolResult
 }
 
 export interface AgentToolErrorContext<Api extends AgentApi = AgentApi> {
@@ -907,7 +927,7 @@ interface AgentConfigBase<Api extends AgentApi> {
 	 * }
 	 * ```
 	 */
-	onToolCall?: (name: string, args: unknown, result: string) => void | Promise<void>
+	onToolCall?: (name: string, args: unknown, result: AgentToolResult) => void | Promise<void>
 	/**
 	 * Observer hook called after an assistant message has been finalized.
 	 *

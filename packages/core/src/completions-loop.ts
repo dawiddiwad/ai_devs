@@ -1,6 +1,11 @@
-import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
+import type {
+	ChatCompletionContentPart,
+	ChatCompletionMessageParam,
+	ChatCompletionTool,
+} from 'openai/resources/chat/completions'
 import { logger } from './logger.js'
 import { safelyObserve } from './observability.js'
+import { appendToolResultForCompletions, createToolResultAttachmentParts, getToolResultText } from './tool-result.js'
 import { captureFlag } from './verify.js'
 import { createOpenAIClient } from './openai-client.js'
 import type {
@@ -9,6 +14,7 @@ import type {
 	AgentMessageHandlerResult,
 	AgentNoToolCallsHandlerResult,
 	AgentResult,
+	AgentToolResult,
 	AgentToolCallHandlerResult,
 } from './types.js'
 
@@ -35,6 +41,7 @@ type CompletionsMessagePhaseResult = {
 
 type CompletionsToolCallPhaseResult = {
 	state: CompletionsLoopState
+	followUpAttachmentParts: ChatCompletionContentPart[]
 	exit: LoopExit
 }
 
@@ -125,14 +132,6 @@ function replaceLastAssistantMessageContent(
 	return [...messages.slice(0, -1), { ...lastMessage, content }]
 }
 
-function appendCompletionsToolResult(
-	messages: ChatCompletionMessageParam[],
-	toolCallId: string,
-	result: string
-): ChatCompletionMessageParam[] {
-	return [...messages, { role: 'tool', tool_call_id: toolCallId, content: result }]
-}
-
 function appendCompletionsToolError(
 	messages: ChatCompletionMessageParam[],
 	toolCallId: string,
@@ -142,12 +141,16 @@ function appendCompletionsToolError(
 
 	logger.tool('error', 'Tool error', { toolCallId, error: errorMessage })
 
-	return appendCompletionsToolResult(messages, toolCallId, JSON.stringify({ error: errorMessage }))
+	return appendToolResultForCompletions(messages, toolCallId, JSON.stringify({ error: errorMessage }))
 }
 
-function createDefaultToolExecutor(config: AgentCompletionsConfig, name: string, args: unknown): () => Promise<string> {
+function createDefaultToolExecutor(
+	config: AgentCompletionsConfig,
+	name: string,
+	args: unknown
+): () => Promise<AgentToolResult> {
 	const tool = config.tools.find((candidate) => candidate.definition.name === name)
-	let defaultResultPromise: Promise<string> | undefined
+	let defaultResultPromise: Promise<AgentToolResult> | undefined
 
 	return () => {
 		if (!defaultResultPromise) {
@@ -189,9 +192,9 @@ async function resolveToolCallHandling(
 	name: string,
 	args: unknown,
 	messages: ChatCompletionMessageParam[],
-	executeDefault: () => Promise<string>
+	executeDefault: () => Promise<AgentToolResult>
 ): Promise<{
-	result: string
+	result: AgentToolResult
 	messages: ChatCompletionMessageParam[]
 	messagesWereReplaced: boolean
 	isFinal: boolean
@@ -329,8 +332,13 @@ async function handleCompletionsToolCall(
 		)
 		const nextMessages = handledToolCall.messagesWereReplaced
 			? handledToolCall.messages
-			: appendCompletionsToolResult(handledToolCall.messages, toolCall.id, handledToolCall.result)
+			: appendToolResultForCompletions(handledToolCall.messages, toolCall.id, handledToolCall.result)
 		const nextState = { ...state, messages: nextMessages }
+		const followUpAttachmentParts = createToolResultAttachmentParts(
+			toolCall.function.name,
+			toolCall.id,
+			handledToolCall.result
+		)
 
 		await config.onToolCall?.(toolCall.function.name, parsedArgs, handledToolCall.result)
 		await safelyObserve(
@@ -350,13 +358,14 @@ async function handleCompletionsToolCall(
 
 		const { flagCaptured, exit } = resolveFinalState(
 			config,
-			handledToolCall.result,
+			getToolResultText(handledToolCall.result),
 			iterationIndex,
 			handledToolCall.isFinal
 		)
 
 		return {
 			state: flagCaptured ? { ...nextState, flagCaptured } : nextState,
+			followUpAttachmentParts,
 			exit,
 		}
 	} catch (error) {
@@ -379,6 +388,7 @@ async function handleCompletionsToolCall(
 				...state,
 				messages: appendCompletionsToolError(state.messages, toolCall.id, error),
 			},
+			followUpAttachmentParts: [],
 			exit: null,
 		}
 	}
@@ -533,6 +543,8 @@ export async function runCompletionsLoop(
 			return createLoopExit(state.lastMessage, iterationIndex, state.flagCaptured)
 		}
 
+		const followUpAttachmentParts: ChatCompletionContentPart[] = []
+
 		for (const toolCall of message.tool_calls) {
 			if (toolCall.type !== 'function') {
 				continue
@@ -540,9 +552,17 @@ export async function runCompletionsLoop(
 
 			const toolCallPhase = await handleCompletionsToolCall(config, iterationIndex, toolCall, state, runHandle)
 			state = toolCallPhase.state
+			followUpAttachmentParts.push(...toolCallPhase.followUpAttachmentParts)
 
 			if (toolCallPhase.exit) {
 				return toolCallPhase.exit
+			}
+		}
+
+		if (followUpAttachmentParts.length > 0) {
+			state = {
+				...state,
+				messages: [...state.messages, { role: 'user', content: followUpAttachmentParts }],
 			}
 		}
 	}

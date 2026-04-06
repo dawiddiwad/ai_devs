@@ -1,13 +1,13 @@
 import { z } from 'zod/v4'
 import type { FunctionTool } from 'openai/resources/responses/responses'
-import type { AgentTool } from './types.js'
+import type { AgentTool, AgentToolResult } from './types.js'
 
 export function defineAgentTool<T extends z.ZodType>(toolConfig: {
 	name: string
 	description: string
 	schema: T
 	strict?: boolean
-	handler: (args: z.infer<T>) => Promise<string>
+	handler: (args: z.infer<T>) => Promise<AgentToolResult>
 }): AgentTool {
 	const jsonSchema = z.toJSONSchema(toolConfig.schema) as Record<string, unknown>
 	delete jsonSchema['$schema']
