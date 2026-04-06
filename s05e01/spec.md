@@ -1,38 +1,26 @@
-# Radiomonitoring — Nasłuch Eteru
+# Chaotyczny Szum Eterowy `radiomonitoring`
 
-## 1. Przegląd i Cel
+## 1. Ekspozycja i Cel Konstrukcji
 
-### Streszczenie Misji
+### Summa Technologiae Misji
 
-Przechwycić transmisje radiowe z nadajnika Domatowo, przefiltrować elektromagnetyczny szum,
-zdekodować materiały, i wydobyć z chaosu cztery fakty o mieście zwanym "Syjon" —
-jego prawdziwe imię, powierzchnię, liczebność magazynów oraz numer kontaktowy.
+Zadaniem Automatu jest pochwycenie efemerycznych drgań elektromagnetycznych, emitowanych przez nadajnik w ustroniu zwanym Domatowem. Należy przesiać ten kosmiczny ściek, oddzielić ziarno sensu od plew entropii i wydobyć z mroków niepamięci cztery kardynalne atrybuty grodu "Syjon": jego miano właściwe, miarę powierzchniową, liczebność składów towarowych oraz cyfrowy ciąg kontaktowy.
 
-### Dane Wejściowe
+### Parametry Inicjalne Matrycy
 
-| Pole     | Wartość               |
-| -------- | --------------------- |
-| task     | `radiomonitoring`     |
-| endpoint | `HUB_ENDPOINT/verify` |
-| apikey   | `AI_DEVS_API_KEY`     |
-
-### Finalna Dostawa
-
-```json
-{
-	"action": "transmit",
-	"cityName": "NazwaMiasta",
-	"cityArea": "12.34",
-	"warehousesCount": 321,
-	"phoneNumber": "123456789"
-}
-```
+| Pole Bitowe | Desygnat              |
+| ----------- | --------------------- |
+| task        | `radiomonitoring`     |
+| endpoint    | `HUB_ENDPOINT/verify` |
+| apikey      | `AI_DEVS_API_KEY`     |
 
 ---
 
-## 2. Persona i Strategia Promptów
+## 2. Ontologia Agenta i Strategia Algorytmiczna
 
-### System Prompt (prompts.ts)
+### Manifest Rozumu Elektronowego (`prompts.ts`)
+
+Oto instrukcje, które należy wyryć w krzemowej pamięci Agenta w języku uniwersalnym dla maszyn myślących:
 
 ```
 You are an intelligence analyst intercepting radio transmissions.
@@ -60,146 +48,76 @@ Your mission: gather all signals first, then identify the city codenamed "Syjon"
 
 ---
 
-## 3. Architektura
+## 3. Architektura Systemu (Konstrukcja Maszyny)
 
-Używamy `runAgent` z narzędziami — core obsługuje `AgentToolBinaryResult` natywnie.
-Obrazy z narzędzi są automatycznie wstrzykiwane jako bloki `image_url` w kolejnej turze LLM.
+Wykorzystujemy potęgę `runAgent`. Obrazy, owe piktograficzne cienie rzeczywistości, są automatycznie wtryskiwane w zwoje LLM jako bloki `image_url` przez rdzeń systemu.
 
 ```
 src/
-  index.ts        # axios POST start → runAgent(completions, tools)
-  prompts.ts      # SYSTEM_PROMPT + USER_PROMPT
+  index.ts        # Inicjacja iskry obliczeniowej → runAgent
+  prompts.ts      # Instrukcje dla Rozumu Elektronowego (v. supra)
   tools/
-    index.ts      # [listenTool, transmitTool]
-    listen.ts     # POST listen → router → string | AgentToolImageResult
-    transmit.ts   # verifyAnswer({action:'transmit', ...4 fields})
+    index.ts      # Instrumentarium [listen, transmit]
+    listen.ts     # Percepcja szumu → obraz lub słowo
+    transmit.ts   # Przesłanie Prawdy do Wielkiego Archiwum
 ```
 
 ---
 
-## 4. Przepływ Wykonania
+## 4. Kinematyka Procesów (Przepływ Wykonania)
 
 ```
 START
-  ├─ 1. index.ts: axios POST {action:"start"}        → init sesji
-  ├─ 2. runAgent('completions', [listen, transmit])
-  │      Agent loop:
-  │      ├─ calls listen() repeatedly
-  │      │     ├─ transcription present    → return string
-  │      │     ├─ attachment, image/*      → return AgentToolImageResult{base64, mimeType}
-  │      │     ├─ attachment, json/text/*  → decode locally → return string
-  │      │     ├─ attachment, other/huge   → return "noise, skipped"
-  │      │     └─ code != 100             → return "COLLECTION_COMPLETE"
-  │      ├─ [core auto-injects images as image_url into next user message]
-  │      ├─ agent accumulates full intel in context window
-  │      └─ agent calls transmit({cityName, cityArea, warehousesCount, phoneNumber})
-  └─ END — verifyAnswer wychwytuje flagę → process.exit(0)
-```
-
-### Kluczowe Decyzje
-
-- Obrazy wracają jako `AgentToolImageResult` — **nigdy** surowy base64 jako string
-- JSON/tekst dekodowany lokalnie (`Buffer.from(b64, 'base64').toString()`) przed zwróceniem
-- Nieznane binarne / zbyt duże pliki → string z opisem szumu
-- Sesja startowana deterministycznie przed `runAgent` (nie przez narzędzie)
-
----
-
-## 5. Definicje Narzędzi
-
-### 5.1 `listen`
-
-**Opis:** Odbiera kolejną porcję sygnału radiowego.
-
-**Schemat wejścia:**
-
-```json
-{ "type": "object", "properties": {}, "required": [] }
-```
-
-**Router:**
-
-```
-response.transcription            → return transcription string
-response.attachment:
-  meta startsWith 'image/'        → AgentToolImageResult { base64, mimeType: meta }
-  meta: 'application/json'/'text' → Buffer.from(attachment,'base64').toString()
-  else OR filesize > 500_000      → "Radio noise, no useful signal"
-response.code != 100              → "COLLECTION_COMPLETE: no more signals"
-```
-
-**Zwraca:** `string | AgentToolImageResult`
-
----
-
-### 5.2 `transmit`
-
-**Opis:** Wysyła końcowy raport z danymi o mieście Syjon.
-
-**Schemat wejścia:**
-
-```json
-{
-	"type": "object",
-	"properties": {
-		"cityName": { "type": "string" },
-		"cityArea": { "type": "string", "description": "format: '12.34'" },
-		"warehousesCount": { "type": "number" },
-		"phoneNumber": { "type": "string" }
-	},
-	"required": ["cityName", "cityArea", "warehousesCount", "phoneNumber"]
-}
-```
-
-**Zachowanie:** `verifyAnswer(config, { action: 'transmit', ...args })`
-
-**Zwraca:** string z odpowiedzią serwera; flaga wychwycona automatycznie → `process.exit(0)`
-
----
-
-## 6. Zależności i Środowisko
-
-### Importy z @ai-devs/core
-
-| Import            | Zastosowanie                                      |
-| ----------------- | ------------------------------------------------- |
-| `createConfig`    | standardowa konfiguracja                          |
-| `runAgent`        | pętla agenta z obsługą binarnych wyników narzędzi |
-| `defineAgentTool` | fabryka narzędzi                                  |
-| `verifyAnswer`    | POST do hub + wychwycenie flagi                   |
-| `logger`          | logowanie operacji                                |
-
-### Typy z @ai-devs/core (do użycia w listen.ts)
-
-```ts
-import type { AgentToolImageResult } from '@ai-devs/core'
-```
-
-### Zmienne Środowiskowe
-
-```env
-AI_DEVS_API_KEY=
-OPENAI_API_KEY=
-HUB_ENDPOINT=
-TASK_NAME=radiomonitoring
+  ├─ 1. Przebudzenie Maszyny: axios POST {action:"start"}
+  ├─ 2. Taniec runAgent('completions', [listen, transmit])
+  │      Pętla Egzystencjalna:
+  │      ├─ Wielokrotny nasłuch: listen()
+  │      │     ├─ Głos w eterze         → zwróć tekst (string)
+  │      │     ├─ Piktogram (image/*)   → zwróć AgentToolImageResult
+  │      │     ├─ Manuskrypt (json/txt) → dekoduj z base64 do mowy ludzkiej
+  │      │     ├─ Monstrum (byt wielki) → określ mianem "noise, skipped"
+  │      │     └─ Sygnał Końca (!= 100) → "COLLECTION_COMPLETE"
+  │      ├─ Agregacja wiedzy w pamięci operacyjnej
+  │      └─ Finalny okrzyk: transmit({cityName, cityArea, ...})
+  └─ KONIEC — verifyAnswer chwyta flagę i kładzie kres procesom.
 ```
 
 ---
 
-## 7. Znane Pułapki
+## 5. Instrumentarium (Definicje Narzędzi)
 
-1. **Rozmiar base64** — nie zwracaj surowego base64 jako stringa; core obsługuje `AgentToolImageResult` poprawnie
-2. **cityArea format** — string `"12.34"`, matematyczne zaokrąglenie, nie obcięcie
-3. **Szum radiowy** — wiele odpowiedzi jest bez wartości; nie filtruj transkrypcji po stronie kodu, LLM poradzi sobie
-4. **Koniec sesji** — `code != 100` LUB message sugerujący "enough data"; obsłuż oba przypadki w listen.ts
+### 5.1 `listen` (Ucho Eterowe)
+
+**Cel:** Pochwycenie kolejnej emanacji sygnału z domatowskiego nadajnika.
+
+**Router Percepcyjny:**
+
+- Transkrypcja obecna → zwróć tekst.
+- Meta `image/` → `AgentToolImageResult` (niech rdzeń zajmie się resztą).
+- Meta `application/json` / `text` → Dekoduj lokalnie z base64 do stringa.
+- Kod != 100 → „COLLECTION_COMPLETE”.
+
+### 5.2 `transmit` (Głos Prawdy)
+
+**Cel:** Przesłanie raportu końcowego o Syjonie.
+
+**Wymogi formalne:** Wszystkie pola (cityName, cityArea, warehousesCount, phoneNumber) muszą być wypełnione zgodnie z rygorem matematycznym, inaczej Maszyna popadnie w błąd logiczny.
 
 ---
 
-## 8. Kryteria Akceptacji
+## 6. Przestrogi dla Konstruktorów (Znane Pułapki)
 
-- [ ] Obrazy zwracane jako `AgentToolImageResult`, nie string z base64
-- [ ] JSON/tekst dekodowany lokalnie przed zwrotem do agenta
-- [ ] Nieznane binarne skipowane z opisem szumu
-- [ ] `cityArea` to string z dokładnie 2 miejscami po przecinku
-- [ ] Flaga wychwytywana przez `verifyAnswer` (regex, nie LLM)
-- [ ] Buduje się czysto: `npm run build`
+1. **Góra lodowa base64** — Nie przesyłaj surowego base64 jako sznura znaków! Rdzeń systemu domaga się `AgentToolImageResult`, by móc go właściwie przetrawić.
+2. **Rygor Matematyczny** — Powierzchnia `cityArea` musi być zaokrąglona (`round`), a nie ucięta toporem ignorancji (`truncate`).
+3. **Biały Szum** — Eter jest pełen bzdur. Pozwól Inteligencji Elektronowej przesiać te brednie samodzielnie – ona posiada filtry, o jakich nie śniło się waszym filozofom.
+4. **Cisza po burzy** — Kod inny niż 100 to znak, że nadajnik zamilkł. Należy wtedy zaprzestać pytań i przejść do syntezy.
+
+---
+
+## 7. Kanon Akceptacji (Kryteria Sukcesu)
+
+- [ ] Obrazy i nagrania płyną w formacie binarnym `AgentToolImageResult`.
+- [ ] Teksty i JSONy są wyłuskane z otuliny base64 przed podaniem ich Agentowi.
+- [ ] Liczba powierzchniowa lśni rygorem dokładnie dwóch miejsc po przecinku.
+- [ ] Flaga zostaje pochwycona przez automat `verifyAnswer`.
+- [ ] Konstrukcja buduje się bez zgrzytów: `npm run build`.
