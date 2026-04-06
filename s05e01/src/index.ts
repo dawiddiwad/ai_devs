@@ -1,6 +1,6 @@
 import { createConfig, createLangfuseObservability, logger, runAgent } from '@ai-devs/core'
-import { SYSTEM_PROMPT, USER_PROMPT } from './prompts.js'
-import { tools } from './tools/index.js'
+import { SYSTEM_PROMPT, USER_PROMPT } from './prompts'
+import { tools } from './tools/index'
 
 const config = createConfig({
 	optionalEnv: {
@@ -22,22 +22,33 @@ const observability =
 		: undefined
 
 async function main() {
-	logger.agent('info', 'Starting task', { task: config.taskName })
+	logger.agent('info', 'Starting radiomonitoring session', { task: config.taskName })
+
+	await fetch(config.verifyEndpoint, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({
+			apikey: config.aiDevsApiKey,
+			task: config.taskName,
+			answer: { action: 'start' },
+		}),
+	})
+
+	logger.agent('info', 'Session started, launching agent')
+
 	await runAgent(config, {
-		api: 'responses',
+		api: 'completions',
 		tools,
 		systemPrompt: SYSTEM_PROMPT,
 		userPrompt: USER_PROMPT,
 		maxIterations: 50,
-		toolChoice: 'required',
 		serviceTier: 'flex',
-		reasoning: { effort: 'low' },
 		observability,
 		handleNoToolCalls: (context) => {
 			return {
 				action: 'continue',
-				input: [
-					...context.input,
+				messages: [
+					...context.messages,
 					{
 						role: 'user',
 						content:
