@@ -2,6 +2,9 @@ import type { ChatCompletionContentPart, ChatCompletionMessageParam } from 'open
 import type { ResponseInputFile, ResponseInputImage, ResponseInputText } from 'openai/resources/responses/responses'
 import type { AgentToolBinaryResult, AgentToolResult } from './types.js'
 
+const unsupportedResponsesAudioToolResultMessage =
+	'Audio tool results are not supported by the Responses API yet. Use api: "completions" or convert audio to text/file first.'
+
 function toDataUrl(base64: string, mimeType: string): string {
 	return base64.startsWith('data:') ? base64 : `data:${mimeType};base64,${base64}`
 }
@@ -21,7 +24,19 @@ function createBinaryToolResultSummary(result: AgentToolBinaryResult): string {
 		return `[Tool returned image: ${result.mimeType}]`
 	}
 
+	if (result.type === 'audio') {
+		return `[Tool returned audio: ${result.format}]`
+	}
+
 	return `[Tool returned file: ${result.filename} (${result.mimeType})]`
+}
+
+function getBinaryToolResultNote(result: AgentToolBinaryResult): string | undefined {
+	if (result.type === 'audio') {
+		return result.transcript
+	}
+
+	return result.text
 }
 
 export function getToolResultText(result: AgentToolResult): string {
@@ -29,7 +44,7 @@ export function getToolResultText(result: AgentToolResult): string {
 		return result
 	}
 
-	return result.text ?? createBinaryToolResultSummary(result)
+	return getBinaryToolResultNote(result) ?? createBinaryToolResultSummary(result)
 }
 
 export function serializeToolResultForResponses(
@@ -41,8 +56,10 @@ export function serializeToolResultForResponses(
 
 	const content: Array<ResponseInputText | ResponseInputImage | ResponseInputFile> = []
 
-	if (result.text) {
-		content.push({ type: 'input_text', text: result.text })
+	const note = getBinaryToolResultNote(result)
+
+	if (note) {
+		content.push({ type: 'input_text', text: note })
 	}
 
 	if (result.type === 'image') {
@@ -51,12 +68,14 @@ export function serializeToolResultForResponses(
 			image_url: toDataUrl(result.base64, result.mimeType),
 			detail: result.detail ?? 'auto',
 		})
-	} else {
+	} else if (result.type === 'file') {
 		content.push({
 			type: 'input_file',
 			filename: result.filename,
 			file_data: toDataUrl(result.base64, result.mimeType),
 		})
+	} else {
+		throw new Error(unsupportedResponsesAudioToolResultMessage)
 	}
 
 	return content
@@ -83,7 +102,9 @@ export function createToolResultAttachmentParts(
 		{
 			type: 'text',
 			text: `Tool "${toolName}" returned the attached ${result.type}. Use it as the tool result for call "${toolCallId}".${
-				result.text ? ` Tool note: ${result.text}` : ''
+				getBinaryToolResultNote(result)
+					? `${result.type === 'audio' ? ' Transcript' : ' Tool note'}: ${getBinaryToolResultNote(result)}`
+					: ''
 			}`,
 		},
 	]
@@ -96,7 +117,7 @@ export function createToolResultAttachmentParts(
 				detail: normalizeCompletionsImageDetail(result.detail),
 			},
 		})
-	} else {
+	} else if (result.type === 'file') {
 		parts.push({
 			type: 'file',
 			file: {
@@ -104,7 +125,19 @@ export function createToolResultAttachmentParts(
 				filename: result.filename,
 			},
 		})
+	} else {
+		parts.push({
+			type: 'input_audio',
+			input_audio: {
+				data: result.base64,
+				format: result.format,
+			},
+		})
 	}
 
 	return parts
+}
+
+export function isUnsupportedResponsesAudioToolResultError(error: unknown): boolean {
+	return error instanceof Error && error.message === unsupportedResponsesAudioToolResultMessage
 }

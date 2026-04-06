@@ -386,6 +386,83 @@ describe('runCompletionsLoop', () => {
 		)
 	})
 
+	it('adds audio follow-up content for audio tool results in completions', async () => {
+		const client = createClientMock()
+		const tool = createTool('listen_note', {
+			type: 'audio',
+			base64: 'c291bmQ=',
+			format: 'wav',
+			transcript: 'The customer says the package arrived damaged.',
+		})
+
+		client.chatCompletionsCreate
+			.mockResolvedValueOnce({
+				choices: [
+					{
+						message: {
+							role: 'assistant',
+							content: 'need audio tool',
+							tool_calls: [
+								{
+									id: 'call-audio-1',
+									type: 'function',
+									function: {
+										name: 'listen_note',
+										arguments: '{}',
+									},
+								},
+							],
+						},
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				choices: [
+					{
+						message: {
+							role: 'assistant',
+							content: 'done',
+						},
+					},
+				],
+			})
+
+		await runCompletionsLoop(client, 'model', 3, undefined, {
+			api: 'completions',
+			tools: [tool],
+			systemPrompt: 'system',
+			userPrompt: 'user',
+		})
+
+		expect(client.chatCompletionsCreate.mock.calls[1]?.[0]).toEqual(
+			expect.objectContaining({
+				messages: expect.arrayContaining([
+					expect.objectContaining({
+						role: 'tool',
+						tool_call_id: 'call-audio-1',
+						content: 'The customer says the package arrived damaged.',
+					}),
+					{
+						role: 'user',
+						content: [
+							{
+								type: 'text',
+								text: 'Tool "listen_note" returned the attached audio. Use it as the tool result for call "call-audio-1". Transcript: The customer says the package arrived damaged.',
+							},
+							{
+								type: 'input_audio',
+								input_audio: {
+									data: 'c291bmQ=',
+									format: 'wav',
+								},
+							},
+						],
+					},
+				]),
+			})
+		)
+	})
+
 	it('continues and then finalizes through handleNoToolCalls', async () => {
 		const client = createClientMock()
 

@@ -1,7 +1,11 @@
 import type { ResponseInput, Tool } from 'openai/resources/responses/responses'
 import { logger } from './logger.js'
 import { safelyObserve } from './observability.js'
-import { getToolResultText, serializeToolResultForResponses } from './tool-result.js'
+import {
+	getToolResultText,
+	isUnsupportedResponsesAudioToolResultError,
+	serializeToolResultForResponses,
+} from './tool-result.js'
 import { captureFlag } from './verify.js'
 import { createOpenAIClient } from './openai-client.js'
 import type {
@@ -350,6 +354,11 @@ async function handleResponsesToolCall(
 				}),
 			undefined
 		)
+
+		if (isUnsupportedResponsesAudioToolResultError(error)) {
+			throw error
+		}
+
 		return {
 			state: {
 				...state,

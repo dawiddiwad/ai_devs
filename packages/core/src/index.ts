@@ -24,6 +24,7 @@ export type {
 	AgentToolBinaryResult,
 	AgentToolImageResult,
 	AgentToolFileResult,
+	AgentToolAudioResult,
 	AgentConfig,
 	AgentResponsesConfig,
 	AgentCompletionsConfig,

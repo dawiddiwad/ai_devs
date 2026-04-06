@@ -18,7 +18,14 @@ export interface AgentToolFileResult {
 	text?: string
 }
 
-export type AgentToolBinaryResult = AgentToolImageResult | AgentToolFileResult
+export interface AgentToolAudioResult {
+	type: 'audio'
+	base64: string
+	format: 'mp3' | 'wav'
+	transcript?: string
+}
+
+export type AgentToolBinaryResult = AgentToolImageResult | AgentToolFileResult | AgentToolAudioResult
 
 export type AgentToolResult = string | AgentToolBinaryResult
 

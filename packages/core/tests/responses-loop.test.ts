@@ -327,6 +327,38 @@ describe('runResponsesLoop', () => {
 		)
 	})
 
+	it('rejects audio tool results for the responses API', async () => {
+		const client = createClientMock()
+		const tool = createTool('listen_note', {
+			type: 'audio',
+			base64: 'c291bmQ=',
+			format: 'wav',
+			transcript: 'The note says to inspect shelf seven.',
+		})
+
+		client.responsesCreate.mockResolvedValueOnce({
+			output: [
+				{
+					type: 'function_call',
+					call_id: 'call-audio-1',
+					name: 'listen_note',
+					arguments: '{}',
+				},
+			],
+		})
+
+		await expect(
+			runResponsesLoop(client, 'model', 3, undefined, {
+				api: 'responses',
+				tools: [tool],
+				systemPrompt: 'system',
+				userPrompt: 'user',
+			})
+		).rejects.toThrow(
+			'Audio tool results are not supported by the Responses API yet. Use api: "completions" or convert audio to text/file first.'
+		)
+	})
+
 	it('continues and then finalizes through handleNoToolCalls', async () => {
 		const client = createClientMock()
 

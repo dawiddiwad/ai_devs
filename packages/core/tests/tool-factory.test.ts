@@ -56,6 +56,27 @@ describe('defineAgentTool', () => {
 		})
 	})
 
+	it('passes through audio tool results', async () => {
+		const tool = defineAgentTool({
+			name: 'listen_note',
+			description: 'Returns a spoken note',
+			schema: z.object({ id: z.string() }),
+			handler: vi.fn().mockResolvedValue({
+				type: 'audio',
+				base64: 'c291bmQ=',
+				format: 'wav',
+				transcript: 'Remember to inspect the damaged package.',
+			}),
+		})
+
+		await expect(tool.execute({ id: '42' })).resolves.toEqual({
+			type: 'audio',
+			base64: 'c291bmQ=',
+			format: 'wav',
+			transcript: 'Remember to inspect the damaged package.',
+		})
+	})
+
 	it('returns an error payload for invalid args', async () => {
 		const tool = defineAgentTool({
 			name: 'lookup_city',
