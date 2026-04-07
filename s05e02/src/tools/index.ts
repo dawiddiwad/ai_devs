@@ -1,4 +1,5 @@
 import type { AgentTool } from '@ai-devs/core'
-import { verifyTool } from './verify.js'
+import { speakToOperatorTool } from './speak-to-operator.js'
+import { startCallTool } from './start-call.js'
 
-export const tools: AgentTool[] = [verifyTool]
+export const tools: AgentTool[] = [startCallTool, speakToOperatorTool]

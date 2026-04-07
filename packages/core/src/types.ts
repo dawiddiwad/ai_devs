@@ -25,6 +25,30 @@ export interface AgentToolAudioResult {
 	transcript?: string
 }
 
+export type AgentAudioFormat = 'wav' | 'aac' | 'mp3' | 'flac' | 'opus' | 'pcm' | 'pcm16'
+
+export interface AgentAudioOutput {
+	base64: string
+	format: AgentAudioFormat
+	transcript: string
+	id?: string
+}
+
+export interface AgentOutput {
+	text: string
+	audio?: AgentAudioOutput
+}
+
+export interface AgentRequestedOutputAudio {
+	format: AgentAudioFormat
+	voice: string | { id: string }
+}
+
+export interface AgentRequestedOutput {
+	modalities?: Array<'text' | 'audio'>
+	audio?: AgentRequestedOutputAudio
+}
+
 export type AgentToolBinaryResult = AgentToolImageResult | AgentToolFileResult | AgentToolAudioResult
 
 export type AgentToolResult = string | AgentToolBinaryResult
@@ -94,10 +118,10 @@ export type AgentApi = 'responses' | 'completions'
  * }
  * ```
  */
-export interface AgentResponsesMessageContext {
+export interface AgentResponsesOutputContext {
 	api: 'responses'
 	iterationIndex: number
-	content: string
+	output: AgentOutput
 	input: ResponseInput
 }
 
@@ -125,10 +149,10 @@ export interface AgentResponsesMessageContext {
  * }
  * ```
  */
-export interface AgentCompletionsMessageContext {
+export interface AgentCompletionsOutputContext {
 	api: 'completions'
 	iterationIndex: number
-	content: string
+	output: AgentOutput
 	messages: ChatCompletionMessageParam[]
 }
 
@@ -150,7 +174,7 @@ export interface AgentCompletionsMessageContext {
  * }
  * ```
  */
-export type AgentMessageContext = AgentResponsesMessageContext | AgentCompletionsMessageContext
+export type AgentOutputContext = AgentResponsesOutputContext | AgentCompletionsOutputContext
 
 /**
  * Result returned from `handleMessage` for the Responses API.
@@ -172,9 +196,9 @@ export type AgentMessageContext = AgentResponsesMessageContext | AgentCompletion
  * }
  * ```
  */
-export type AgentResponsesMessageHandlerResult =
-	| { action: 'continue'; content?: string; input?: ResponseInput }
-	| { action: 'final'; content?: string; input?: ResponseInput }
+export type AgentResponsesOutputHandlerResult =
+	| { action: 'continue'; output?: AgentOutput; input?: ResponseInput }
+	| { action: 'final'; output?: AgentOutput; input?: ResponseInput }
 
 /**
  * Result returned from `handleMessage` for the Chat Completions API.
@@ -196,9 +220,9 @@ export type AgentResponsesMessageHandlerResult =
  * }
  * ```
  */
-export type AgentCompletionsMessageHandlerResult =
-	| { action: 'continue'; content?: string; messages?: ChatCompletionMessageParam[] }
-	| { action: 'final'; content?: string; messages?: ChatCompletionMessageParam[] }
+export type AgentCompletionsOutputHandlerResult =
+	| { action: 'continue'; output?: AgentOutput; messages?: ChatCompletionMessageParam[] }
+	| { action: 'final'; output?: AgentOutput; messages?: ChatCompletionMessageParam[] }
 
 /**
  * Union of all possible `handleMessage` results.
@@ -210,7 +234,7 @@ export type AgentCompletionsMessageHandlerResult =
  * const result: AgentMessageHandlerResult = undefined
  * ```
  */
-export type AgentMessageHandlerResult = void | AgentResponsesMessageHandlerResult | AgentCompletionsMessageHandlerResult
+export type AgentOutputHandlerResult = void | AgentResponsesOutputHandlerResult | AgentCompletionsOutputHandlerResult
 
 /**
  * Resolves the exact `handleMessage` context shape for the selected API.
@@ -226,9 +250,9 @@ export type AgentMessageHandlerResult = void | AgentResponsesMessageHandlerResul
  * type ResponsesMessageContext = AgentMessageContextForApi<'responses'>
  * ```
  */
-export type AgentMessageContextForApi<Api extends AgentApi> = Api extends 'responses'
-	? AgentResponsesMessageContext
-	: AgentCompletionsMessageContext
+export type AgentOutputContextForApi<Api extends AgentApi> = Api extends 'responses'
+	? AgentResponsesOutputContext
+	: AgentCompletionsOutputContext
 
 /**
  * Resolves the exact `handleMessage` result shape for the selected API.
@@ -244,9 +268,9 @@ export type AgentMessageContextForApi<Api extends AgentApi> = Api extends 'respo
  * type CompletionsMessageResult = AgentMessageHandlerResultForApi<'completions'>
  * ```
  */
-export type AgentMessageHandlerResultForApi<Api extends AgentApi> = Api extends 'responses'
-	? void | AgentResponsesMessageHandlerResult
-	: void | AgentCompletionsMessageHandlerResult
+export type AgentOutputHandlerResultForApi<Api extends AgentApi> = Api extends 'responses'
+	? void | AgentResponsesOutputHandlerResult
+	: void | AgentCompletionsOutputHandlerResult
 
 /**
  * Context passed to `handleToolCall` when the active loop uses the Responses API.
@@ -450,7 +474,7 @@ export type AgentToolCallHandlerResultForApi<Api extends AgentApi> = Api extends
 export interface AgentResponsesNoToolCallsContext {
 	api: 'responses'
 	iterationIndex: number
-	content: string
+	output: AgentOutput
 	input: ResponseInput
 }
 
@@ -477,7 +501,7 @@ export interface AgentResponsesNoToolCallsContext {
 export interface AgentCompletionsNoToolCallsContext {
 	api: 'completions'
 	iterationIndex: number
-	content: string
+	output: AgentOutput
 	messages: ChatCompletionMessageParam[]
 }
 
@@ -516,8 +540,8 @@ export type AgentNoToolCallsContext = AgentResponsesNoToolCallsContext | AgentCo
  * ```
  */
 export type AgentResponsesNoToolCallsHandlerResult =
-	| { action: 'continue'; content?: string; input: ResponseInput }
-	| { action: 'final'; content?: string; input?: ResponseInput }
+	| { action: 'continue'; output?: AgentOutput; input: ResponseInput }
+	| { action: 'final'; output?: AgentOutput; input?: ResponseInput }
 
 /**
  * Result returned from `handleNoToolCalls` for the Chat Completions API.
@@ -537,8 +561,8 @@ export type AgentResponsesNoToolCallsHandlerResult =
  * ```
  */
 export type AgentCompletionsNoToolCallsHandlerResult =
-	| { action: 'continue'; content?: string; messages: ChatCompletionMessageParam[] }
-	| { action: 'final'; content?: string; messages?: ChatCompletionMessageParam[] }
+	| { action: 'continue'; output?: AgentOutput; messages: ChatCompletionMessageParam[] }
+	| { action: 'final'; output?: AgentOutput; messages?: ChatCompletionMessageParam[] }
 
 /**
  * Union of all possible `handleNoToolCalls` results.
@@ -672,11 +696,11 @@ export interface AgentToolErrorContext<Api extends AgentApi = AgentApi> {
 	errorMessage: string
 }
 
-export interface AgentMessageObservationContext<Api extends AgentApi = AgentApi> {
+export interface AgentOutputObservationContext<Api extends AgentApi = AgentApi> {
 	api: Api
 	runHandle: AgentObservationHandle | undefined
 	iterationIndex: number
-	content: string
+	output: AgentOutput
 	isFinal: boolean
 }
 
@@ -697,7 +721,7 @@ export interface AgentObservability<Api extends AgentApi = AgentApi> {
 	) => AgentObservationHandle | Promise<AgentObservationHandle | void> | void
 	onToolEnd?: (context: AgentToolEndContext<Api>) => Promise<void> | void
 	onToolError?: (context: AgentToolErrorContext<Api>) => Promise<void> | void
-	onMessage?: (context: AgentMessageObservationContext<Api>) => Promise<void> | void
+	onOutput?: (context: AgentOutputObservationContext<Api>) => Promise<void> | void
 	flush?: () => Promise<void> | void
 }
 
@@ -823,6 +847,7 @@ interface AgentConfigBase<Api extends AgentApi> {
 	 * ```
 	 */
 	temperature?: number
+	output?: AgentRequestedOutput
 	/**
 	 * Optional reasoning settings for reasoning-capable models.
 	 *
@@ -951,7 +976,7 @@ interface AgentConfigBase<Api extends AgentApi> {
 	 * }
 	 * ```
 	 */
-	onMessage?: (content: string) => void | Promise<void>
+	onOutput?: (output: AgentOutput) => void | Promise<void>
 	/**
 	 * Interceptor hook for tool calls.
 	 *
@@ -995,9 +1020,9 @@ interface AgentConfigBase<Api extends AgentApi> {
 	 * }
 	 * ```
 	 */
-	handleMessage?: (
-		context: AgentMessageContextForApi<Api>
-	) => AgentMessageHandlerResultForApi<Api> | Promise<AgentMessageHandlerResultForApi<Api>>
+	handleOutput?: (
+		context: AgentOutputContextForApi<Api>
+	) => AgentOutputHandlerResultForApi<Api> | Promise<AgentOutputHandlerResultForApi<Api>>
 	/**
 	 * Interceptor hook for the branch where the model returned no tool calls.
 	 *
@@ -1110,7 +1135,7 @@ export type AgentConfig<Api extends AgentApi = AgentApi> = Api extends 'response
  * ```
  */
 export interface AgentResult {
-	finalMessage: string
+	output: AgentOutput
 	iterations: number
 	flagCaptured: string | null
 }

@@ -29,7 +29,7 @@ describe('runAgent', () => {
 		const client = { id: 'client' }
 		createOpenAIClientMock.mockReturnValue(client)
 		runResponsesLoopMock.mockResolvedValue({
-			finalMessage: 'responses result',
+			output: { text: 'responses result' },
 			iterations: 1,
 			flagCaptured: null,
 		})
@@ -74,7 +74,7 @@ describe('runAgent', () => {
 		)
 		expect(runCompletionsLoopMock).not.toHaveBeenCalled()
 		expect(result).toEqual({
-			finalMessage: 'responses result',
+			output: { text: 'responses result' },
 			iterations: 1,
 			flagCaptured: null,
 		})
@@ -84,7 +84,7 @@ describe('runAgent', () => {
 		const client = { id: 'client' }
 		createOpenAIClientMock.mockReturnValue(client)
 		runCompletionsLoopMock.mockResolvedValue({
-			finalMessage: 'completions result',
+			output: { text: 'completions result' },
 			iterations: 2,
 			flagCaptured: '{FLG:test}',
 		})
@@ -126,7 +126,7 @@ describe('runAgent', () => {
 		)
 		expect(runResponsesLoopMock).not.toHaveBeenCalled()
 		expect(result).toEqual({
-			finalMessage: 'completions result',
+			output: { text: 'completions result' },
 			iterations: 2,
 			flagCaptured: '{FLG:test}',
 		})
@@ -141,7 +141,7 @@ describe('runAgent', () => {
 		}
 		createOpenAIClientMock.mockReturnValue(client)
 		runResponsesLoopMock.mockResolvedValue({
-			finalMessage: 'responses result',
+			output: { text: 'responses result' },
 			iterations: 1,
 			flagCaptured: null,
 		})
@@ -185,7 +185,7 @@ describe('runAgent', () => {
 			api: 'responses',
 			runHandle: 'run-handle',
 			result: {
-				finalMessage: 'responses result',
+				output: { text: 'responses result' },
 				iterations: 1,
 				flagCaptured: null,
 			},
@@ -235,7 +235,7 @@ describe('runAgent', () => {
 		const withRunContext = vi.fn(async (_context, run) => run())
 		createOpenAIClientMock.mockReturnValue(client)
 		runResponsesLoopMock.mockResolvedValue({
-			finalMessage: 'responses result',
+			output: { text: 'responses result' },
 			iterations: 1,
 			flagCaptured: null,
 		})

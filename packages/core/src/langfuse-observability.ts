@@ -1,7 +1,7 @@
 import { logger } from './logger.js'
 import { sanitizeForObservability, truncateString } from './observability.js'
 import type {
-	AgentMessageObservationContext,
+	AgentOutputObservationContext,
 	AgentResult,
 	AgentModelEndContext,
 	AgentModelErrorContext,
@@ -239,7 +239,7 @@ export function createLangfuseObservability(options: CreateLangfuseObservability
 								try {
 									const result = await run()
 									const traceOutput = sanitize({
-										finalMessage: result.finalMessage,
+										output: result.output,
 										iterations: result.iterations,
 										flagCaptured: result.flagCaptured,
 									})
@@ -320,13 +320,13 @@ export function createLangfuseObservability(options: CreateLangfuseObservability
 		onToolError: async ({ toolHandle, errorMessage }: AgentToolErrorContext) => {
 			updateAndEndObservation(toolHandle, createErrorUpdate(errorMessage))
 		},
-		onMessage: async ({ runHandle, api, iterationIndex, content, isFinal }: AgentMessageObservationContext) => {
+		onOutput: async ({ runHandle, api, iterationIndex, output, isFinal }: AgentOutputObservationContext) => {
 			const runtime = await getLangfuseRuntime(options)
 
 			runtime.startObservation(
-				'agent-message',
+				'agent-output',
 				{
-					output: sanitize(content),
+					output: sanitize(output),
 					metadata: {
 						api,
 						iterationIndex,

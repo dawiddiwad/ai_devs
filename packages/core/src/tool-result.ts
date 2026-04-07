@@ -1,9 +1,11 @@
 import type { ChatCompletionContentPart, ChatCompletionMessageParam } from 'openai/resources/chat/completions'
-import type { ResponseInputFile, ResponseInputImage, ResponseInputText } from 'openai/resources/responses/responses'
+import type {
+	ResponseInput,
+	ResponseInputFile,
+	ResponseInputImage,
+	ResponseInputText,
+} from 'openai/resources/responses/responses'
 import type { AgentToolBinaryResult, AgentToolResult } from './types.js'
-
-const unsupportedResponsesAudioToolResultMessage =
-	'Audio tool results are not supported by the Responses API yet. Use api: "completions" or convert audio to text/file first.'
 
 function toDataUrl(base64: string, mimeType: string): string {
 	return base64.startsWith('data:') ? base64 : `data:${mimeType};base64,${base64}`
@@ -47,11 +49,12 @@ export function getToolResultText(result: AgentToolResult): string {
 	return getBinaryToolResultNote(result) ?? createBinaryToolResultSummary(result)
 }
 
-export function serializeToolResultForResponses(
-	result: AgentToolResult
-): string | Array<ResponseInputText | ResponseInputImage | ResponseInputFile> {
+export function serializeToolResultForResponses(result: AgentToolResult): {
+	output: string | Array<ResponseInputText | ResponseInputImage | ResponseInputFile>
+	followUpInput: ResponseInput
+} {
 	if (typeof result === 'string') {
-		return result
+		return { output: result, followUpInput: [] }
 	}
 
 	const content: Array<ResponseInputText | ResponseInputImage | ResponseInputFile> = []
@@ -75,10 +78,21 @@ export function serializeToolResultForResponses(
 			file_data: toDataUrl(result.base64, result.mimeType),
 		})
 	} else {
-		throw new Error(unsupportedResponsesAudioToolResultMessage)
+		return {
+			output: note ?? createBinaryToolResultSummary(result),
+			followUpInput: [
+				{
+					type: 'input_audio',
+					input_audio: {
+						data: result.base64,
+						format: result.format,
+					},
+				} as unknown as ResponseInput[number],
+			],
+		}
 	}
 
-	return content
+	return { output: content, followUpInput: [] }
 }
 
 export function appendToolResultForCompletions(
@@ -136,8 +150,4 @@ export function createToolResultAttachmentParts(
 	}
 
 	return parts
-}
-
-export function isUnsupportedResponsesAudioToolResultError(error: unknown): boolean {
-	return error instanceof Error && error.message === unsupportedResponsesAudioToolResultMessage
 }

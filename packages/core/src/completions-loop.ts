@@ -1,5 +1,8 @@
 import type {
+	ChatCompletionAudio,
+	ChatCompletionAudioParam,
 	ChatCompletionContentPart,
+	ChatCompletionMessage,
 	ChatCompletionMessageParam,
 	ChatCompletionTool,
 } from 'openai/resources/chat/completions'
@@ -11,7 +14,8 @@ import { createOpenAIClient } from './openai-client.js'
 import type {
 	AgentObservationHandle,
 	AgentCompletionsConfig,
-	AgentMessageHandlerResult,
+	AgentOutput,
+	AgentOutputHandlerResult,
 	AgentNoToolCallsHandlerResult,
 	AgentResult,
 	AgentToolResult,
@@ -29,7 +33,7 @@ type CompletionsFunctionToolCall = {
 }
 
 type CompletionsLoopState = {
-	lastMessage: string
+	lastOutput: AgentOutput
 	flagCaptured: string | null
 	messages: ChatCompletionMessageParam[]
 }
@@ -52,9 +56,9 @@ type CompletionsNoToolCallsPhaseResult = {
 }
 
 function hasMessagesAccumulator(
-	result: AgentMessageHandlerResult | AgentToolCallHandlerResult | AgentNoToolCallsHandlerResult
+	result: AgentOutputHandlerResult | AgentToolCallHandlerResult | AgentNoToolCallsHandlerResult
 ): result is
-	| (Extract<AgentMessageHandlerResult, { messages?: ChatCompletionMessageParam[] }> & {
+	| (Extract<AgentOutputHandlerResult, { messages?: ChatCompletionMessageParam[] }> & {
 			messages: ChatCompletionMessageParam[]
 	  })
 	| (Extract<AgentToolCallHandlerResult, { messages?: ChatCompletionMessageParam[] }> & {
@@ -66,17 +70,21 @@ function hasMessagesAccumulator(
 	return !!result && typeof result === 'object' && 'messages' in result && result.messages !== undefined
 }
 
-function createLoopExit(finalMessage: string, iterationIndex: number, flagCaptured: string | null): AgentResult {
-	return { finalMessage, iterations: iterationIndex + 1, flagCaptured }
+function createEmptyOutput(): AgentOutput {
+	return { text: '' }
+}
+
+function createLoopExit(output: AgentOutput, iterationIndex: number, flagCaptured: string | null): AgentResult {
+	return { output, iterations: iterationIndex + 1, flagCaptured }
 }
 
 function resolveFinalState(
 	config: AgentCompletionsConfig,
-	finalMessage: string,
+	output: AgentOutput,
 	iterationIndex: number,
 	isFinal: boolean
 ): { flagCaptured: string | null; exit: LoopExit } {
-	const flagCaptured = captureFlag(finalMessage)
+	const flagCaptured = captureFlag(output.text)
 	if (flagCaptured) {
 		if (config.exitOnFlag !== false) {
 			process.exit(0)
@@ -84,14 +92,14 @@ function resolveFinalState(
 
 		return {
 			flagCaptured,
-			exit: createLoopExit(finalMessage, iterationIndex, flagCaptured),
+			exit: createLoopExit(output, iterationIndex, flagCaptured),
 		}
 	}
 
 	if (isFinal) {
 		return {
 			flagCaptured: null,
-			exit: createLoopExit(finalMessage, iterationIndex, null),
+			exit: createLoopExit(output, iterationIndex, null),
 		}
 	}
 
@@ -101,14 +109,107 @@ function resolveFinalState(
 function createCompletionsRequest(
 	model: string,
 	temperature: number | undefined,
+	config: AgentCompletionsConfig,
 	messages: ChatCompletionMessageParam[],
 	toolDefs: ChatCompletionTool[]
 ) {
+	const outputAudio = config.output?.audio
+	const outputModalities = config.output?.modalities ?? (outputAudio ? ['text', 'audio'] : undefined)
+
+	if (outputAudio && outputModalities && !outputModalities.includes('audio')) {
+		throw new Error('output.audio requires output.modalities to include "audio" in the completions loop')
+	}
+
+	if (outputModalities?.includes('audio') && !outputAudio) {
+		throw new Error('output.modalities includes "audio" but output.audio is missing in the completions loop')
+	}
+
+	const audioRequest: ChatCompletionAudioParam | undefined = outputAudio
+		? {
+				format: outputAudio.format === 'pcm' ? 'pcm16' : outputAudio.format,
+				voice: outputAudio.voice,
+			}
+		: undefined
+
 	return {
 		model,
 		messages,
 		tools: toolDefs.length > 0 ? toolDefs : undefined,
+		tool_choice: toolDefs.length > 0 ? (config.toolChoice ?? 'auto') : undefined,
+		modalities: outputModalities,
+		audio: audioRequest,
+		reasoning_effort: config.reasoning?.effort,
+		service_tier: config.serviceTier,
 		temperature,
+	}
+}
+
+function extractCompletionsContentText(content: ChatCompletionMessageParam['content']): string {
+	if (typeof content === 'string') {
+		return content
+	}
+
+	if (!Array.isArray(content)) {
+		return ''
+	}
+
+	return content
+		.map((part) => {
+			if (part.type === 'text') {
+				return part.text
+			}
+
+			if (part.type === 'refusal') {
+				return part.refusal
+			}
+
+			return ''
+		})
+		.join('')
+}
+
+function normalizeCompletionsAudioFormat(
+	audio: ChatCompletionAudio | undefined,
+	config: AgentCompletionsConfig
+): AgentOutput['audio'] {
+	if (!audio) {
+		return undefined
+	}
+
+	const configuredFormat = config.output?.audio?.format
+	const format = configuredFormat === 'pcm' ? 'pcm16' : (configuredFormat ?? 'mp3')
+
+	return {
+		base64: audio.data,
+		format,
+		transcript: audio.transcript,
+		id: audio.id,
+	}
+}
+
+function extractCompletionsOutput(message: ChatCompletionMessage, config: AgentCompletionsConfig): AgentOutput | null {
+	const contentText = extractCompletionsContentText(message.content)
+	const audio = normalizeCompletionsAudioFormat(message.audio ?? undefined, config)
+	const text = contentText || message.refusal || audio?.transcript || ''
+
+	if (!text && !audio) {
+		return null
+	}
+
+	return {
+		text,
+		...(audio ? { audio } : {}),
+	}
+}
+
+function createAssistantHistoryMessage(message: ChatCompletionMessage): ChatCompletionMessageParam {
+	return {
+		role: 'assistant',
+		content: message.content,
+		...(message.refusal ? { refusal: message.refusal } : {}),
+		...(message.audio?.id ? { audio: { id: message.audio.id } } : {}),
+		...(message.tool_calls ? { tool_calls: message.tool_calls } : {}),
+		...(message.function_call ? { function_call: message.function_call } : {}),
 	}
 }
 
@@ -119,9 +220,9 @@ function appendAssistantMessage(
 	return [...messages, message]
 }
 
-function replaceLastAssistantMessageContent(
+function replaceLastAssistantMessageOutput(
 	messages: ChatCompletionMessageParam[],
-	content: string
+	output: AgentOutput
 ): ChatCompletionMessageParam[] {
 	const lastMessage = messages[messages.length - 1]
 
@@ -129,7 +230,14 @@ function replaceLastAssistantMessageContent(
 		return messages
 	}
 
-	return [...messages.slice(0, -1), { ...lastMessage, content }]
+	return [
+		...messages.slice(0, -1),
+		{
+			...lastMessage,
+			content: output.text,
+			...(output.audio?.id ? { audio: { id: output.audio.id } } : {}),
+		},
+	]
 }
 
 function appendCompletionsToolError(
@@ -163,25 +271,25 @@ function createDefaultToolExecutor(
 	}
 }
 
-async function resolveMessageHandling(
+async function resolveOutputHandling(
 	config: AgentCompletionsConfig,
 	iterationIndex: number,
-	content: string,
+	output: AgentOutput,
 	messages: ChatCompletionMessageParam[]
-): Promise<{ content: string; messages: ChatCompletionMessageParam[]; isFinal: boolean }> {
-	const handled = await config.handleMessage?.({ api: 'completions', iterationIndex, content, messages })
+): Promise<{ output: AgentOutput; messages: ChatCompletionMessageParam[]; isFinal: boolean }> {
+	const handled = await config.handleOutput?.({ api: 'completions', iterationIndex, output, messages })
 
 	if (!handled) {
-		return { content, messages, isFinal: false }
+		return { output, messages, isFinal: false }
 	}
 
-	const nextContent = handled.content ?? content
+	const nextOutput = handled.output ?? output
 
 	return {
-		content: nextContent,
+		output: nextOutput,
 		messages: hasMessagesAccumulator(handled)
 			? handled.messages
-			: replaceLastAssistantMessageContent(messages, nextContent),
+			: replaceLastAssistantMessageOutput(messages, nextOutput),
 		isFinal: handled.action === 'final',
 	}
 }
@@ -224,18 +332,18 @@ async function resolveToolCallHandling(
 async function resolveNoToolCallsHandling(
 	config: AgentCompletionsConfig,
 	iterationIndex: number,
-	content: string,
+	output: AgentOutput,
 	messages: ChatCompletionMessageParam[]
-): Promise<{ content: string; messages: ChatCompletionMessageParam[]; shouldContinue: boolean; isFinal: boolean }> {
-	const handled = await config.handleNoToolCalls?.({ api: 'completions', iterationIndex, content, messages })
+): Promise<{ output: AgentOutput; messages: ChatCompletionMessageParam[]; shouldContinue: boolean; isFinal: boolean }> {
+	const handled = await config.handleNoToolCalls?.({ api: 'completions', iterationIndex, output, messages })
 
 	if (!handled) {
-		return { content, messages, shouldContinue: false, isFinal: false }
+		return { output, messages, shouldContinue: false, isFinal: false }
 	}
 
 	if (handled.action === 'final') {
 		return {
-			content: handled.content ?? content,
+			output: handled.output ?? output,
 			messages: hasMessagesAccumulator(handled) ? handled.messages : messages,
 			shouldContinue: false,
 			isFinal: true,
@@ -247,44 +355,47 @@ async function resolveNoToolCallsHandling(
 	}
 
 	return {
-		content: handled.content ?? content,
+		output: handled.output ?? output,
 		messages: handled.messages,
 		shouldContinue: true,
 		isFinal: false,
 	}
 }
 
-async function handleCompletionsMessage(
+async function handleCompletionsOutput(
 	config: AgentCompletionsConfig,
 	iterationIndex: number,
-	content: string,
+	output: AgentOutput,
 	state: CompletionsLoopState,
 	runHandle: AgentObservationHandle | undefined
 ): Promise<CompletionsMessagePhaseResult> {
-	const handledMessage = await resolveMessageHandling(config, iterationIndex, content, state.messages)
+	const handledOutput = await resolveOutputHandling(config, iterationIndex, output, state.messages)
 	const nextState = {
 		...state,
-		lastMessage: handledMessage.content,
-		messages: handledMessage.messages,
+		lastOutput: handledOutput.output,
+		messages: handledOutput.messages,
 	}
 
-	logger.agent('info', 'Agent message', { content: handledMessage.content.slice(0, 200) })
-	await config.onMessage?.(handledMessage.content)
+	logger.agent('info', 'Agent output', {
+		text: handledOutput.output.text.slice(0, 200),
+		hasAudio: !!handledOutput.output.audio,
+	})
+	await config.onOutput?.(handledOutput.output)
 
 	const { flagCaptured, exit } = resolveFinalState(
 		config,
-		handledMessage.content,
+		handledOutput.output,
 		iterationIndex,
-		handledMessage.isFinal
+		handledOutput.isFinal
 	)
 	await safelyObserve(
-		'onMessage',
+		'onOutput',
 		() =>
-			config.observability?.onMessage?.({
+			config.observability?.onOutput?.({
 				api: 'completions',
 				runHandle,
 				iterationIndex,
-				content: handledMessage.content,
+				output: handledOutput.output,
 				isFinal: exit !== null,
 			}),
 		undefined
@@ -358,7 +469,7 @@ async function handleCompletionsToolCall(
 
 		const { flagCaptured, exit } = resolveFinalState(
 			config,
-			getToolResultText(handledToolCall.result),
+			{ text: getToolResultText(handledToolCall.result) },
 			iterationIndex,
 			handledToolCall.isFinal
 		)
@@ -402,17 +513,17 @@ async function handleCompletionsNoToolCalls(
 	const handledNoToolCalls = await resolveNoToolCallsHandling(
 		config,
 		iterationIndex,
-		state.lastMessage,
+		state.lastOutput,
 		state.messages
 	)
 	const nextState = {
 		...state,
-		lastMessage: handledNoToolCalls.content,
+		lastOutput: handledNoToolCalls.output,
 		messages: handledNoToolCalls.messages,
 	}
 	const { flagCaptured, exit } = resolveFinalState(
 		config,
-		handledNoToolCalls.content,
+		handledNoToolCalls.output,
 		iterationIndex,
 		handledNoToolCalls.isFinal
 	)
@@ -443,7 +554,7 @@ export async function runCompletionsLoop(
 	}))
 
 	let state: CompletionsLoopState = {
-		lastMessage: '',
+		lastOutput: createEmptyOutput(),
 		flagCaptured: null,
 		messages: [
 			{ role: 'system', content: config.systemPrompt },
@@ -454,7 +565,7 @@ export async function runCompletionsLoop(
 	for (let iterationIndex = 0; iterationIndex < maxIterations; iterationIndex++) {
 		logger.agent('info', `Iteration ${iterationIndex + 1}/${maxIterations}`)
 
-		const request = createCompletionsRequest(model, temperature, state.messages, toolDefs)
+		const request = createCompletionsRequest(model, temperature, config, state.messages, toolDefs)
 		const modelHandle = await safelyObserve(
 			'onModelStart',
 			() =>
@@ -506,19 +617,18 @@ export async function runCompletionsLoop(
 
 		if (!message) {
 			logger.agent('error', 'No message in response')
-			return createLoopExit(state.lastMessage, iterationIndex, state.flagCaptured)
+			return createLoopExit(state.lastOutput, iterationIndex, state.flagCaptured)
 		}
 
-		state = { ...state, messages: appendAssistantMessage(state.messages, message) }
+		state = {
+			...state,
+			messages: appendAssistantMessage(state.messages, createAssistantHistoryMessage(message)),
+		}
 
-		if (message.content) {
-			const messagePhase = await handleCompletionsMessage(
-				config,
-				iterationIndex,
-				message.content,
-				state,
-				runHandle
-			)
+		const output = extractCompletionsOutput(message, config)
+
+		if (output) {
+			const messagePhase = await handleCompletionsOutput(config, iterationIndex, output, state, runHandle)
 			state = messagePhase.state
 
 			if (messagePhase.exit) {
@@ -527,6 +637,10 @@ export async function runCompletionsLoop(
 		}
 
 		if (!message.tool_calls?.length) {
+			if (!output) {
+				state = { ...state, lastOutput: createEmptyOutput() }
+			}
+
 			const noToolCallsPhase = await handleCompletionsNoToolCalls(config, iterationIndex, state)
 			state = noToolCallsPhase.state
 
@@ -539,8 +653,8 @@ export async function runCompletionsLoop(
 			}
 
 			logger.agent('info', 'No tool calls — agent finished')
-			logger.agent('info', 'Response', { content: JSON.stringify(response, null, 2) })
-			return createLoopExit(state.lastMessage, iterationIndex, state.flagCaptured)
+			logger.agent('info', 'Message', { content: JSON.stringify(response.choices[0]?.message.content, null, 2) })
+			return createLoopExit(state.lastOutput, iterationIndex, state.flagCaptured)
 		}
 
 		const followUpAttachmentParts: ChatCompletionContentPart[] = []
@@ -568,5 +682,5 @@ export async function runCompletionsLoop(
 	}
 
 	logger.agent('error', 'Max iterations reached')
-	return { finalMessage: state.lastMessage, iterations: maxIterations, flagCaptured: state.flagCaptured }
+	return { output: state.lastOutput, iterations: maxIterations, flagCaptured: state.flagCaptured }
 }

@@ -1,7 +1,7 @@
 {
-	"name": "lesson-name-ex-s02e03",
+	"name": "s05e02-phonecall",
 	"version": "1.0.0",
-	"description": "lessons-task-name-ex-railways",
+	"description": "AI Devs task solution for phonecall",
 	"license": "MIT",
 	"author": "Dawid Dobrowolski",
 	"type": "commonjs",
@@ -19,16 +19,17 @@
 	},
 	"dependencies": {
 		"@ai-devs/core": "workspace:*",
+		"axios": "^1.14.0",
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
+		"@eslint/js": "^9.39.4",
 		"@types/node": "^25.4.0",
+		"eslint": "^9.39.4",
+		"eslint-config-prettier": "^10.1.8",
+		"prettier": "^3.7.4",
 		"ts-node": "^10.9.2",
 		"typescript": "^5.9.3",
-		"eslint": "^9.39.4",
-		"@eslint/js": "^9.39.4",
-		"eslint-config-prettier": "^10.1.8",
-		"typescript-eslint": "^8.56.1",
-		"prettier": "^3.7.4"
+		"typescript-eslint": "^8.56.1"
 	}
 }

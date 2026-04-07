@@ -55,11 +55,120 @@ describe('runCompletionsLoop', () => {
 		})
 
 		expect(result).toEqual({
-			finalMessage: 'final answer',
+			output: { text: 'final answer' },
 			iterations: 1,
 			flagCaptured: null,
 		})
 		expect(client.chatCompletionsCreate).toHaveBeenCalledTimes(1)
+	})
+
+	it('requests native audio output and preserves previous audio ids across turns', async () => {
+		const client = createClientMock()
+
+		client.chatCompletionsCreate
+			.mockResolvedValueOnce({
+				choices: [
+					{
+						message: {
+							role: 'assistant',
+							content: 'spoken hello',
+							audio: {
+								id: 'audio-1',
+								data: 'YmVlcA==',
+								expires_at: 123,
+								transcript: 'spoken hello',
+							},
+						},
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				choices: [
+					{
+						message: {
+							role: 'assistant',
+							content: 'done',
+						},
+					},
+				],
+			})
+
+		const result = await runCompletionsLoop(client, 'model', 3, undefined, {
+			api: 'completions',
+			tools: [],
+			systemPrompt: 'system',
+			userPrompt: 'user',
+			output: {
+				modalities: ['text', 'audio'],
+				audio: { format: 'mp3', voice: 'alloy' },
+			},
+			handleNoToolCalls: ({ iterationIndex, messages }) => {
+				if (iterationIndex === 0) {
+					return { action: 'continue', messages: [...messages, { role: 'user', content: 'continue' }] }
+				}
+
+				return undefined
+			},
+		})
+
+		expect(client.chatCompletionsCreate.mock.calls[0]?.[0]).toEqual(
+			expect.objectContaining({
+				modalities: ['text', 'audio'],
+				audio: { format: 'mp3', voice: 'alloy' },
+			})
+		)
+		expect(client.chatCompletionsCreate.mock.calls[1]?.[0]).toEqual(
+			expect.objectContaining({
+				messages: expect.arrayContaining([
+					expect.objectContaining({
+						role: 'assistant',
+						content: 'spoken hello',
+						audio: { id: 'audio-1' },
+					}),
+				]),
+			})
+		)
+		expect(result).toEqual({
+			output: { text: 'done' },
+			iterations: 2,
+			flagCaptured: null,
+		})
+	})
+
+	it('forwards tool choice, reasoning effort, and service tier in completions requests', async () => {
+		const client = createClientMock()
+		const tool = createTool('lookup', 'ok')
+
+		client.chatCompletionsCreate.mockResolvedValueOnce({
+			choices: [
+				{
+					message: {
+						role: 'assistant',
+						content: 'done',
+					},
+				},
+			],
+		})
+
+		await runCompletionsLoop(client, 'model', 3, 0.1, {
+			api: 'completions',
+			tools: [tool],
+			systemPrompt: 'system',
+			userPrompt: 'user',
+			toolChoice: 'required',
+			reasoning: { effort: 'low' },
+			serviceTier: 'flex',
+		})
+
+		expect(client.chatCompletionsCreate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				model: 'model',
+				temperature: 0.1,
+				tool_choice: 'required',
+				reasoning_effort: 'low',
+				service_tier: 'flex',
+			})
+		)
 	})
 
 	it('emits generic observability hooks for model, tool, and message lifecycle', async () => {
@@ -70,7 +179,7 @@ describe('runCompletionsLoop', () => {
 			onModelEnd: vi.fn(),
 			onToolStart: vi.fn().mockResolvedValue('tool-1'),
 			onToolEnd: vi.fn(),
-			onMessage: vi.fn(),
+			onOutput: vi.fn(),
 		}
 
 		client.chatCompletionsCreate
@@ -154,25 +263,25 @@ describe('runCompletionsLoop', () => {
 			args: { city: 'Paris' },
 			result: 'tool-result',
 		})
-		expect(observability.onMessage).toHaveBeenNthCalledWith(1, {
+		expect(observability.onOutput).toHaveBeenNthCalledWith(1, {
 			api: 'completions',
 			runHandle: 'run-handle',
 			iterationIndex: 0,
-			content: 'need tool',
+			output: { text: 'need tool' },
 			isFinal: false,
 		})
-		expect(observability.onMessage).toHaveBeenNthCalledWith(2, {
+		expect(observability.onOutput).toHaveBeenNthCalledWith(2, {
 			api: 'completions',
 			runHandle: 'run-handle',
 			iterationIndex: 1,
-			content: 'done',
+			output: { text: 'done' },
 			isFinal: false,
 		})
 	})
 
-	it('applies handleMessage rewrites and onMessage callbacks', async () => {
+	it('applies handleOutput rewrites and onOutput callbacks', async () => {
 		const client = createClientMock()
-		const onMessage = vi.fn()
+		const onOutput = vi.fn()
 
 		client.chatCompletionsCreate.mockResolvedValueOnce({
 			choices: [
@@ -190,22 +299,22 @@ describe('runCompletionsLoop', () => {
 			tools: [],
 			systemPrompt: 'system',
 			userPrompt: 'user',
-			handleMessage: ({ iterationIndex, content, messages }) => {
+			handleOutput: ({ iterationIndex, output, messages }) => {
 				if (iterationIndex === 0) {
 					return {
 						action: 'continue',
-						content: `rewritten ${content}`,
+						output: { text: `rewritten ${output.text}` },
 						messages: [...messages, { role: 'user', content: 'carry on' }],
 					}
 				}
 
-				return { action: 'final', content: `final ${content}` }
+				return { action: 'final', output: { text: `final ${output.text}` } }
 			},
-			handleNoToolCalls: ({ content }) => ({ action: 'final', content: `final ${content}` }),
-			onMessage,
+			handleNoToolCalls: ({ output }) => ({ action: 'final', output: { text: `final ${output.text}` } }),
+			onOutput,
 		})
 
-		expect(onMessage).toHaveBeenCalledWith('rewritten raw step 1')
+		expect(onOutput).toHaveBeenCalledWith({ text: 'rewritten raw step 1' })
 		expect(client.chatCompletionsCreate.mock.calls[0][0]).toEqual(
 			expect.objectContaining({
 				messages: [
@@ -215,7 +324,7 @@ describe('runCompletionsLoop', () => {
 			})
 		)
 		expect(result).toEqual({
-			finalMessage: 'final rewritten raw step 1',
+			output: { text: 'final rewritten raw step 1' },
 			iterations: 1,
 			flagCaptured: null,
 		})
@@ -302,7 +411,7 @@ describe('runCompletionsLoop', () => {
 			})
 		)
 		expect(result).toEqual({
-			finalMessage: 'override-result',
+			output: { text: 'override-result' },
 			iterations: 2,
 			flagCaptured: null,
 		})
@@ -493,16 +602,16 @@ describe('runCompletionsLoop', () => {
 			tools: [],
 			systemPrompt: 'system',
 			userPrompt: 'user',
-			handleNoToolCalls: ({ iterationIndex, content, messages }) => {
+			handleNoToolCalls: ({ iterationIndex, output, messages }) => {
 				if (iterationIndex === 0) {
 					return {
 						action: 'continue',
-						content: `retry ${content}`,
+						output: { text: `retry ${output.text}` },
 						messages: [...messages, { role: 'user', content: 'try again' }],
 					}
 				}
 
-				return { action: 'final', content: `done ${content}` }
+				return { action: 'final', output: { text: `done ${output.text}` } }
 			},
 		})
 
@@ -512,7 +621,7 @@ describe('runCompletionsLoop', () => {
 			})
 		)
 		expect(result).toEqual({
-			finalMessage: 'done raw step 2',
+			output: { text: 'done raw step 2' },
 			iterations: 2,
 			flagCaptured: null,
 		})
@@ -596,7 +705,7 @@ describe('runCompletionsLoop', () => {
 				]),
 			})
 		)
-		expect(result.finalMessage).toBe('done')
+		expect(result.output.text).toBe('done')
 	})
 
 	it('exits when a flag is captured', async () => {
@@ -623,7 +732,7 @@ describe('runCompletionsLoop', () => {
 
 		expect(exitSpy).toHaveBeenCalledWith(0)
 		expect(result).toEqual({
-			finalMessage: 'done {FLG:completions-123}',
+			output: { text: 'done {FLG:completions-123}' },
 			iterations: 1,
 			flagCaptured: '{FLG:completions-123}',
 		})

@@ -1,16 +1,13 @@
-import type { ResponseInput, Tool } from 'openai/resources/responses/responses'
+import type { ResponseInput, ResponseOutputAudio, Tool } from 'openai/resources/responses/responses'
 import { logger } from './logger.js'
 import { safelyObserve } from './observability.js'
-import {
-	getToolResultText,
-	isUnsupportedResponsesAudioToolResultError,
-	serializeToolResultForResponses,
-} from './tool-result.js'
+import { getToolResultText, serializeToolResultForResponses } from './tool-result.js'
 import { captureFlag } from './verify.js'
 import { createOpenAIClient } from './openai-client.js'
 import type {
 	AgentObservationHandle,
-	AgentMessageHandlerResult,
+	AgentOutput,
+	AgentOutputHandlerResult,
 	AgentNoToolCallsHandlerResult,
 	AgentResult,
 	AgentResponsesConfig,
@@ -27,7 +24,7 @@ type ResponsesFunctionCallItem = {
 }
 
 type ResponsesLoopState = {
-	lastMessage: string
+	lastOutput: AgentOutput
 	flagCaptured: string | null
 	inputMessages: ResponseInput
 }
@@ -49,25 +46,29 @@ type ResponsesNoToolCallsPhaseResult = {
 }
 
 function hasInputAccumulator(
-	result: AgentMessageHandlerResult | AgentToolCallHandlerResult | AgentNoToolCallsHandlerResult
+	result: AgentOutputHandlerResult | AgentToolCallHandlerResult | AgentNoToolCallsHandlerResult
 ): result is
-	| (Extract<AgentMessageHandlerResult, { input?: ResponseInput }> & { input: ResponseInput })
+	| (Extract<AgentOutputHandlerResult, { input?: ResponseInput }> & { input: ResponseInput })
 	| (Extract<AgentToolCallHandlerResult, { input?: ResponseInput }> & { input: ResponseInput })
 	| (Extract<AgentNoToolCallsHandlerResult, { input?: ResponseInput }> & { input: ResponseInput }) {
 	return !!result && typeof result === 'object' && 'input' in result && result.input !== undefined
 }
 
-function createLoopExit(finalMessage: string, iterationIndex: number, flagCaptured: string | null): AgentResult {
-	return { finalMessage, iterations: iterationIndex + 1, flagCaptured }
+function createEmptyOutput(): AgentOutput {
+	return { text: '' }
+}
+
+function createLoopExit(output: AgentOutput, iterationIndex: number, flagCaptured: string | null): AgentResult {
+	return { output, iterations: iterationIndex + 1, flagCaptured }
 }
 
 function resolveFinalState(
 	config: AgentResponsesConfig,
-	finalMessage: string,
+	output: AgentOutput,
 	iterationIndex: number,
 	isFinal: boolean
 ): { flagCaptured: string | null; exit: LoopExit } {
-	const flagCaptured = captureFlag(finalMessage)
+	const flagCaptured = captureFlag(output.text)
 	if (flagCaptured) {
 		if (config.exitOnFlag !== false) {
 			process.exit(0)
@@ -75,14 +76,14 @@ function resolveFinalState(
 
 		return {
 			flagCaptured,
-			exit: createLoopExit(finalMessage, iterationIndex, flagCaptured),
+			exit: createLoopExit(output, iterationIndex, flagCaptured),
 		}
 	}
 
 	if (isFinal) {
 		return {
 			flagCaptured: null,
-			exit: createLoopExit(finalMessage, iterationIndex, null),
+			exit: createLoopExit(output, iterationIndex, null),
 		}
 	}
 
@@ -117,10 +118,31 @@ function extractResponseMessageText(contentItems: Array<{ type: string; text?: s
 		.join('')
 }
 
+function normalizeResponsesAudioOutput(audio: ResponseOutputAudio, config: AgentResponsesConfig): AgentOutput['audio'] {
+	const configuredFormat = config.output?.audio?.format
+	const format = configuredFormat === 'pcm' ? 'pcm16' : (configuredFormat ?? 'mp3')
+
+	return {
+		base64: audio.data,
+		format,
+		transcript: audio.transcript,
+	}
+}
+
+function mergeOutputs(current: AgentOutput | null, next: AgentOutput): AgentOutput {
+	return {
+		text: next.text || current?.text || '',
+		...(current?.audio || next.audio ? { audio: next.audio ?? current?.audio } : {}),
+	}
+}
+
 function appendResponsesToolOutput(input: ResponseInput, callId: string, output: AgentToolResult): ResponseInput {
+	const serialized = serializeToolResultForResponses(output)
+
 	return [
 		...input,
-		{ type: 'function_call_output', call_id: callId, output: serializeToolResultForResponses(output) },
+		{ type: 'function_call_output', call_id: callId, output: serialized.output },
+		...serialized.followUpInput,
 	]
 }
 
@@ -151,20 +173,20 @@ function createDefaultToolExecutor(
 	}
 }
 
-async function resolveMessageHandling(
+async function resolveOutputHandling(
 	config: AgentResponsesConfig,
 	iterationIndex: number,
-	content: string,
+	output: AgentOutput,
 	input: ResponseInput
-): Promise<{ content: string; input: ResponseInput; isFinal: boolean }> {
-	const handled = await config.handleMessage?.({ api: 'responses', iterationIndex, content, input })
+): Promise<{ output: AgentOutput; input: ResponseInput; isFinal: boolean }> {
+	const handled = await config.handleOutput?.({ api: 'responses', iterationIndex, output, input })
 
 	if (!handled) {
-		return { content, input, isFinal: false }
+		return { output, input, isFinal: false }
 	}
 
 	return {
-		content: handled.content ?? content,
+		output: handled.output ?? output,
 		input: hasInputAccumulator(handled) ? handled.input : input,
 		isFinal: handled.action === 'final',
 	}
@@ -203,18 +225,18 @@ async function resolveToolCallHandling(
 async function resolveNoToolCallsHandling(
 	config: AgentResponsesConfig,
 	iterationIndex: number,
-	content: string,
+	output: AgentOutput,
 	input: ResponseInput
-): Promise<{ content: string; input: ResponseInput; shouldContinue: boolean; isFinal: boolean }> {
-	const handled = await config.handleNoToolCalls?.({ api: 'responses', iterationIndex, content, input })
+): Promise<{ output: AgentOutput; input: ResponseInput; shouldContinue: boolean; isFinal: boolean }> {
+	const handled = await config.handleNoToolCalls?.({ api: 'responses', iterationIndex, output, input })
 
 	if (!handled) {
-		return { content, input, shouldContinue: false, isFinal: false }
+		return { output, input, shouldContinue: false, isFinal: false }
 	}
 
 	if (handled.action === 'final') {
 		return {
-			content: handled.content ?? content,
+			output: handled.output ?? output,
 			input: hasInputAccumulator(handled) ? handled.input : input,
 			shouldContinue: false,
 			isFinal: true,
@@ -226,44 +248,47 @@ async function resolveNoToolCallsHandling(
 	}
 
 	return {
-		content: handled.content ?? content,
+		output: handled.output ?? output,
 		input: handled.input,
 		shouldContinue: true,
 		isFinal: false,
 	}
 }
 
-async function handleResponsesMessage(
+async function handleResponsesOutput(
 	config: AgentResponsesConfig,
 	iterationIndex: number,
-	text: string,
+	output: AgentOutput,
 	state: ResponsesLoopState,
 	runHandle: AgentObservationHandle | undefined
 ): Promise<ResponsesMessagePhaseResult> {
-	const handledMessage = await resolveMessageHandling(config, iterationIndex, text, state.inputMessages)
+	const handledOutput = await resolveOutputHandling(config, iterationIndex, output, state.inputMessages)
 	const nextState = {
 		...state,
-		lastMessage: handledMessage.content,
-		inputMessages: handledMessage.input,
+		lastOutput: handledOutput.output,
+		inputMessages: handledOutput.input,
 	}
 
-	logger.agent('info', 'Agent message', { content: handledMessage.content.slice(0, 200) })
-	await config.onMessage?.(handledMessage.content)
+	logger.agent('info', 'Agent output', {
+		text: handledOutput.output.text.slice(0, 200),
+		hasAudio: !!handledOutput.output.audio,
+	})
+	await config.onOutput?.(handledOutput.output)
 
 	const { flagCaptured, exit } = resolveFinalState(
 		config,
-		handledMessage.content,
+		handledOutput.output,
 		iterationIndex,
-		handledMessage.isFinal
+		handledOutput.isFinal
 	)
 	await safelyObserve(
-		'onMessage',
+		'onOutput',
 		() =>
-			config.observability?.onMessage?.({
+			config.observability?.onOutput?.({
 				api: 'responses',
 				runHandle,
 				iterationIndex,
-				content: handledMessage.content,
+				output: handledOutput.output,
 				isFinal: exit !== null,
 			}),
 		undefined
@@ -330,7 +355,7 @@ async function handleResponsesToolCall(
 
 		const { flagCaptured, exit } = resolveFinalState(
 			config,
-			getToolResultText(handledToolCall.result),
+			{ text: getToolResultText(handledToolCall.result) },
 			iterationIndex,
 			handledToolCall.isFinal
 		)
@@ -355,10 +380,6 @@ async function handleResponsesToolCall(
 			undefined
 		)
 
-		if (isUnsupportedResponsesAudioToolResultError(error)) {
-			throw error
-		}
-
 		return {
 			state: {
 				...state,
@@ -377,17 +398,17 @@ async function handleResponsesNoToolCalls(
 	const handledNoToolCalls = await resolveNoToolCallsHandling(
 		config,
 		iterationIndex,
-		state.lastMessage,
+		state.lastOutput,
 		state.inputMessages
 	)
 	const nextState = {
 		...state,
-		lastMessage: handledNoToolCalls.content,
+		lastOutput: handledNoToolCalls.output,
 		inputMessages: handledNoToolCalls.input,
 	}
 	const { flagCaptured, exit } = resolveFinalState(
 		config,
-		handledNoToolCalls.content,
+		handledNoToolCalls.output,
 		iterationIndex,
 		handledNoToolCalls.isFinal
 	)
@@ -407,6 +428,12 @@ export async function runResponsesLoop(
 	config: AgentResponsesConfig,
 	runHandle?: AgentObservationHandle
 ): Promise<AgentResult> {
+	if (config.output?.audio || config.output?.modalities?.includes('audio')) {
+		throw new Error(
+			'Direct model audio output is not supported by the Responses loop yet. Use api: "completions" for native audio generation.'
+		)
+	}
+
 	const toolDefs = config.tools.map((tool) => tool.definition) satisfies Tool[]
 	const conversation = await client.conversations.create({
 		items: [
@@ -416,7 +443,7 @@ export async function runResponsesLoop(
 	})
 
 	let state: ResponsesLoopState = {
-		lastMessage: '',
+		lastOutput: createEmptyOutput(),
 		flagCaptured: null,
 		inputMessages: [],
 	}
@@ -481,20 +508,44 @@ export async function runResponsesLoop(
 		}
 
 		state = { ...state, inputMessages: [] }
+		let pendingOutput: AgentOutput | null = null
+		let producedOutputThisIteration = false
 
-		for (const item of response.output) {
+		const flushPendingOutput = async (): Promise<LoopExit> => {
+			if (!pendingOutput) {
+				return null
+			}
+
+			const outputPhase = await handleResponsesOutput(config, iterationIndex, pendingOutput, state, runHandle)
+			state = outputPhase.state
+			producedOutputThisIteration = true
+			pendingOutput = null
+
+			return outputPhase.exit
+		}
+
+		for (const item of response.output as Array<(typeof response.output)[number] | ResponseOutputAudio>) {
 			if (item.type === 'message') {
 				const text = extractResponseMessageText(item.content)
-				if (!text) {
-					continue
+				if (text) {
+					pendingOutput = mergeOutputs(pendingOutput, { text })
 				}
 
-				const messagePhase = await handleResponsesMessage(config, iterationIndex, text, state, runHandle)
-				state = messagePhase.state
+				continue
+			}
 
-				if (messagePhase.exit) {
-					return messagePhase.exit
-				}
+			if (item.type === 'output_audio') {
+				pendingOutput = mergeOutputs(pendingOutput, {
+					text: item.transcript,
+					audio: normalizeResponsesAudioOutput(item, config),
+				})
+
+				continue
+			}
+
+			const outputExit = await flushPendingOutput()
+			if (outputExit) {
+				return outputExit
 			}
 
 			if (item.type === 'function_call') {
@@ -507,8 +558,17 @@ export async function runResponsesLoop(
 			}
 		}
 
+		const outputExit = await flushPendingOutput()
+		if (outputExit) {
+			return outputExit
+		}
+
 		if (state.inputMessages.length > 0) {
 			continue
+		}
+
+		if (!producedOutputThisIteration) {
+			state = { ...state, lastOutput: createEmptyOutput() }
 		}
 
 		const noToolCallsPhase = await handleResponsesNoToolCalls(config, iterationIndex, state)
@@ -523,9 +583,9 @@ export async function runResponsesLoop(
 		}
 
 		logger.agent('info', 'No tool calls — agent finished')
-		return createLoopExit(state.lastMessage, iterationIndex, state.flagCaptured)
+		return createLoopExit(state.lastOutput, iterationIndex, state.flagCaptured)
 	}
 
 	logger.agent('error', 'Max iterations reached')
-	return { finalMessage: state.lastMessage, iterations: maxIterations, flagCaptured: state.flagCaptured }
+	return { output: state.lastOutput, iterations: maxIterations, flagCaptured: state.flagCaptured }
 }

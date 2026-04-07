@@ -57,12 +57,68 @@ describe('runResponsesLoop', () => {
 		})
 
 		expect(result).toEqual({
-			finalMessage: 'final answer',
+			output: { text: 'final answer' },
 			iterations: 1,
 			flagCaptured: null,
 		})
 		expect(client.conversationsCreate).toHaveBeenCalledTimes(1)
 		expect(client.responsesCreate).toHaveBeenCalledTimes(1)
+	})
+
+	it('rejects direct native audio output requests in the responses loop', async () => {
+		const client = createClientMock()
+
+		await expect(
+			runResponsesLoop(client, 'model', 3, undefined, {
+				api: 'responses',
+				tools: [],
+				systemPrompt: 'system',
+				userPrompt: 'user',
+				output: {
+					modalities: ['text', 'audio'],
+					audio: { format: 'mp3', voice: 'alloy' },
+				},
+			})
+		).rejects.toThrow(
+			'Direct model audio output is not supported by the Responses loop yet. Use api: "completions" for native audio generation.'
+		)
+	})
+
+	it('normalizes output_audio items when the provider returns them', async () => {
+		const client = createClientMock()
+		client.responsesCreate.mockResolvedValueOnce({
+			output: [
+				{
+					type: 'message',
+					content: [{ type: 'output_text', text: 'spoken hello' }],
+				},
+				{
+					type: 'output_audio',
+					data: 'YmVlcA==',
+					transcript: 'spoken hello',
+				},
+			],
+		})
+
+		const result = await runResponsesLoop(client, 'model', 3, undefined, {
+			api: 'responses',
+			tools: [],
+			systemPrompt: 'system',
+			userPrompt: 'user',
+		})
+
+		expect(result).toEqual({
+			output: {
+				text: 'spoken hello',
+				audio: {
+					base64: 'YmVlcA==',
+					format: 'mp3',
+					transcript: 'spoken hello',
+				},
+			},
+			iterations: 1,
+			flagCaptured: null,
+		})
 	})
 
 	it('emits generic observability hooks for model, tool, and message lifecycle', async () => {
@@ -73,7 +129,7 @@ describe('runResponsesLoop', () => {
 			onModelEnd: vi.fn(),
 			onToolStart: vi.fn().mockResolvedValue('tool-1'),
 			onToolEnd: vi.fn(),
-			onMessage: vi.fn(),
+			onOutput: vi.fn(),
 		}
 
 		client.responsesCreate
@@ -145,18 +201,18 @@ describe('runResponsesLoop', () => {
 			args: { city: 'Paris' },
 			result: 'tool-result',
 		})
-		expect(observability.onMessage).toHaveBeenCalledWith({
+		expect(observability.onOutput).toHaveBeenCalledWith({
 			api: 'responses',
 			runHandle: 'run-handle',
 			iterationIndex: 1,
-			content: 'done',
+			output: { text: 'done' },
 			isFinal: false,
 		})
 	})
 
-	it('applies handleMessage rewrites and onMessage callbacks', async () => {
+	it('applies handleOutput rewrites and onOutput callbacks', async () => {
 		const client = createClientMock()
-		const onMessage = vi.fn()
+		const onOutput = vi.fn()
 
 		client.responsesCreate
 			.mockResolvedValueOnce({
@@ -181,29 +237,29 @@ describe('runResponsesLoop', () => {
 			tools: [],
 			systemPrompt: 'system',
 			userPrompt: 'user',
-			handleMessage: ({ iterationIndex, content, input }) => {
+			handleOutput: ({ iterationIndex, output, input }) => {
 				if (iterationIndex === 0) {
 					return {
 						action: 'continue',
-						content: `rewritten ${content}`,
+						output: { text: `rewritten ${output.text}` },
 						input: [...input, { role: 'user', content: 'carry on' }],
 					}
 				}
 
-				return { action: 'final', content: `final ${content}` }
+				return { action: 'final', output: { text: `final ${output.text}` } }
 			},
-			onMessage,
+			onOutput,
 		})
 
-		expect(onMessage).toHaveBeenNthCalledWith(1, 'rewritten raw step 1')
-		expect(onMessage).toHaveBeenNthCalledWith(2, 'final raw step 2')
+		expect(onOutput).toHaveBeenNthCalledWith(1, { text: 'rewritten raw step 1' })
+		expect(onOutput).toHaveBeenNthCalledWith(2, { text: 'final raw step 2' })
 		expect(client.responsesCreate.mock.calls[1][0]).toEqual(
 			expect.objectContaining({
 				input: [expect.objectContaining({ role: 'user', content: 'carry on' })],
 			})
 		)
 		expect(result).toEqual({
-			finalMessage: 'final raw step 2',
+			output: { text: 'final raw step 2' },
 			iterations: 2,
 			flagCaptured: null,
 		})
@@ -264,7 +320,7 @@ describe('runResponsesLoop', () => {
 			})
 		)
 		expect(result).toEqual({
-			finalMessage: 'override-result',
+			output: { text: 'override-result' },
 			iterations: 2,
 			flagCaptured: null,
 		})
@@ -327,7 +383,7 @@ describe('runResponsesLoop', () => {
 		)
 	})
 
-	it('rejects audio tool results for the responses API', async () => {
+	it('serializes audio tool results for the responses API via transcript plus input_audio shim', async () => {
 		const client = createClientMock()
 		const tool = createTool('listen_note', {
 			type: 'audio',
@@ -336,26 +392,50 @@ describe('runResponsesLoop', () => {
 			transcript: 'The note says to inspect shelf seven.',
 		})
 
-		client.responsesCreate.mockResolvedValueOnce({
-			output: [
-				{
-					type: 'function_call',
-					call_id: 'call-audio-1',
-					name: 'listen_note',
-					arguments: '{}',
-				},
-			],
+		client.responsesCreate
+			.mockResolvedValueOnce({
+				output: [
+					{
+						type: 'function_call',
+						call_id: 'call-audio-1',
+						name: 'listen_note',
+						arguments: '{}',
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				output: [
+					{
+						type: 'message',
+						content: [{ type: 'output_text', text: 'done' }],
+					},
+				],
+			})
+
+		await runResponsesLoop(client, 'model', 3, undefined, {
+			api: 'responses',
+			tools: [tool],
+			systemPrompt: 'system',
+			userPrompt: 'user',
 		})
 
-		await expect(
-			runResponsesLoop(client, 'model', 3, undefined, {
-				api: 'responses',
-				tools: [tool],
-				systemPrompt: 'system',
-				userPrompt: 'user',
+		expect(client.responsesCreate.mock.calls[1]?.[0]).toEqual(
+			expect.objectContaining({
+				input: [
+					{
+						type: 'function_call_output',
+						call_id: 'call-audio-1',
+						output: 'The note says to inspect shelf seven.',
+					},
+					{
+						type: 'input_audio',
+						input_audio: {
+							data: 'c291bmQ=',
+							format: 'wav',
+						},
+					},
+				],
 			})
-		).rejects.toThrow(
-			'Audio tool results are not supported by the Responses API yet. Use api: "completions" or convert audio to text/file first.'
 		)
 	})
 
@@ -385,16 +465,16 @@ describe('runResponsesLoop', () => {
 			tools: [],
 			systemPrompt: 'system',
 			userPrompt: 'user',
-			handleNoToolCalls: ({ iterationIndex, content, input }) => {
+			handleNoToolCalls: ({ iterationIndex, output, input }) => {
 				if (iterationIndex === 0) {
 					return {
 						action: 'continue',
-						content: `retry ${content}`,
+						output: { text: `retry ${output.text}` },
 						input: [...input, { role: 'user', content: 'try again' }],
 					}
 				}
 
-				return { action: 'final', content: `done ${content}` }
+				return { action: 'final', output: { text: `done ${output.text}` } }
 			},
 		})
 
@@ -404,7 +484,7 @@ describe('runResponsesLoop', () => {
 			})
 		)
 		expect(result).toEqual({
-			finalMessage: 'done raw step 2',
+			output: { text: 'done raw step 2' },
 			iterations: 2,
 			flagCaptured: null,
 		})
@@ -478,7 +558,7 @@ describe('runResponsesLoop', () => {
 				],
 			})
 		)
-		expect(result.finalMessage).toBe('done')
+		expect(result.output.text).toBe('done')
 	})
 
 	it('exits when a flag is captured', async () => {
@@ -503,7 +583,7 @@ describe('runResponsesLoop', () => {
 
 		expect(exitSpy).toHaveBeenCalledWith(0)
 		expect(result).toEqual({
-			finalMessage: 'done {FLG:responses-123}',
+			output: { text: 'done {FLG:responses-123}' },
 			iterations: 1,
 			flagCaptured: '{FLG:responses-123}',
 		})

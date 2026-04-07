@@ -157,16 +157,16 @@ describe('createLangfuseObservability', () => {
 					result: 'tool-result',
 				})
 
-				await observability.onMessage?.({
+				await observability.onOutput?.({
 					api: 'responses',
 					runHandle: undefined,
 					iterationIndex: 1,
-					content: 'done',
+					output: { text: 'done' },
 					isFinal: true,
 				})
 
 				return {
-					finalMessage: 'done',
+					output: { text: 'done' },
 					iterations: 2,
 					flagCaptured: null,
 				}
@@ -241,9 +241,9 @@ describe('createLangfuseObservability', () => {
 		)
 		expect(startObservationMock).toHaveBeenNthCalledWith(
 			3,
-			'agent-message',
+			'agent-output',
 			expect.objectContaining({
-				output: 'done',
+				output: { text: 'done' },
 				metadata: { api: 'responses', iterationIndex: 1, isFinal: true },
 			}),
 			expect.objectContaining({ asType: 'event' })
@@ -257,20 +257,20 @@ describe('createLangfuseObservability', () => {
 		expect(createdObservations[2]?.observation.end).toHaveBeenCalledTimes(1)
 		expect(createdObservations[0]?.observation.update).toHaveBeenNthCalledWith(2, {
 			output: {
-				finalMessage: 'done',
+				output: { text: 'done' },
 				iterations: 2,
 				flagCaptured: null,
 			},
 		})
 		expect(createdObservations[0]?.observation.setTraceIO).toHaveBeenNthCalledWith(2, {
 			output: {
-				finalMessage: 'done',
+				output: { text: 'done' },
 				iterations: 2,
 				flagCaptured: null,
 			},
 		})
 		expect(result).toEqual({
-			finalMessage: 'done',
+			output: { text: 'done' },
 			iterations: 2,
 			flagCaptured: null,
 		})

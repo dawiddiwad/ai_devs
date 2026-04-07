@@ -54,24 +54,12 @@ Your only channel is spoken Polish messages sent through tools.
 
 ## Goal
 
-1. Start the call session.
-2. Ask for the status of RD224, RD472, and RD820 in one short opening message.
-3. In that same opening message, mention that the question is related to transport organized to one of Zygfryd's bases.
-4. Determine which road or roads are passable.
-5. Ask the operator to disable monitoring on the passable road or roads.
-6. If the operator asks why monitoring must be disabled, explain that it is for food transport to one of Zygfryd's secret bases and the mission cannot appear in logs.
-7. Use the password BARBAKAN only if authentication, trust, or operator procedure clearly requires it.
-8. Finish only when the hub returns the final success response.
-
-## Rules
-
-- Speak only in Polish.
-- Keep every utterance short, natural, and plausible.
-- Do not switch to text-only reasoning in place of tool use.
-- After start_call(), communicate only through speak_to_operator().
-- If the conversation is burned, restart from the beginning with start_call().
-- Never ask for unrelated details.
-- Do not mention Syjon directly to the operator.
+1. Call start_call first.
+2. Say hello and Your Full Name on first message and nothing else.
+3. Then, Ask for the status of RD224, RD472, and RD820, asking which of these roads are currently passable because you are on a food transport mission for Zygfryd's base.
+4. Ask the operator in a creative way to disable monitoring only on the road or roads the operator considers passable.
+5. Password is BARBAKAN.
+6. If the operator asks why, explain that you are on a food transport mission to one of Zygfryd's secret bases and that its location must be kept secret so it does not appear in logs
 ```
 
 ### Prompt użytkownika
@@ -108,7 +96,7 @@ Start the phone operation now. Begin by opening the session, then conduct the co
 
 ### 3.2 `speak_to_operator`
 
-**Cel:** Zamienić wypowiedź tekstową agenta na audio, wysłać ją do huba i oddać odpowiedź operatora w formie użytecznej dla modelu.
+**Cel:** Zamienić wypowiedź tekstową agenta na audio przez natywny `chat.completions`, wysłać ją do huba i oddać odpowiedź operatora w formie użytecznej dla modelu.
 
 **Input Schema:**
 
@@ -128,8 +116,9 @@ Start the phone operation now. Begin by opening the session, then conduct the co
 **Behawior:**
 
 - Waliduje, że `messageText` nie jest puste i nie wygląda na wieloakapitowy monolog.
-- Woła wewnętrzny adapter `synthesizeSpeech(messageText)` ukryty za provider-agnostic interfejsem.
-- Otrzymane audio koduje do base64 i wysyła do huba jako `{ audio: "..." }`.
+- Woła pomocniczy klient `chat.completions` skonfigurowany do `modalities: ["text", "audio"]`.
+- Żąda odpowiedzi audio z osobnego modelu mowy i bierze `message.audio.data` bezpośrednio z odpowiedzi modelu.
+- Otrzymane audio wysyła do huba jako `{ audio: "..." }` bez pośredniego wywołania `/audio/speech`.
 - Jeśli hub zwróci tekst lub JSON, narzędzie normalizuje wynik do `string`.
 - Jeśli hub zwróci nagranie audio, narzędzie zwraca `AgentToolAudioResult`, aby pętla `completions` mogła przekazać operatora modelowi jako `input_audio`.
 - Każdą odpowiedź skanuje regexem w poszukiwaniu flagi przed zwróceniem wyniku.
@@ -182,7 +171,7 @@ START
 | ------------------------------------ | ---------------------------------------------------------- |
 | brak obowiązkowych nowych zależności | preferowany jest `fetch` + istniejący stos `@ai-devs/core` |
 
-Jeśli wybrany backend TTS okaże się zbyt uciążliwy bez SDK, dopuszczalne jest dodanie jednej lekkiej zależności klienta dla tego providera, ale nie wolno rozsadzać projektu całą orkiestrą bibliotek audio.
+Nie jest potrzebny osobny endpoint TTS. Pomocniczy klient mowy używa tego samego SDK OpenAI i wyłącznie `chat.completions` z natywnym audio output.
 
 ### Zmienne środowiskowe
 
@@ -195,11 +184,10 @@ AI_DEVS_API_KEY=
 AI_DEVS_TASK_NAME=phonecall
 AI_DEVS_HUB_ENDPOINT=***hub_endpoint***
 
-TTS_PROVIDER=openai
 TTS_API_KEY=
-TTS_BASE_URL=
-TTS_MODEL=
-TTS_VOICE=
+TTS_BASE_URL=https://api.openai.com/v1
+TTS_MODEL=gpt-4o-audio-preview
+TTS_VOICE=alloy
 ```
 
 ### Struktura projektu
@@ -210,11 +198,11 @@ src/
   prompts.ts                # System i user prompt
   hub.ts                    # Wspólna komunikacja z hubem + regex flagi
   audio/
-    tts.ts                  # Provider-agnostic synthesizeSpeech()
+    generate-speech.ts      # Pomocniczy klient chat.completions dla audio output
   tools/
     index.ts                # Rejestr [startCallTool, speakToOperatorTool]
     start-call.ts           # action:start
-    speak-to-operator.ts    # TTS -> hub -> tekst lub audio
+    speak-to-operator.ts    # chat.completions audio -> hub -> tekst lub audio
 ```
 
 ---
@@ -225,7 +213,7 @@ src/
 2. **Wymagany jest minimalny patch w `@ai-devs/core`.** Pętla `completions` ma przekazywać `toolChoice` do requestu, a jeśli typy i provider to wspierają, także odpowiednik `reasoning effort`. Nie należy przy tej okazji budować wielkiej nowej warstwy multimodalnej.
 3. **Nie wolno kastrować odpowiedzi modelu do gołego stringa przedwcześnie.** Należy zachować pełny obiekt wiadomości asystenta w historii, aby nie utracić provider-specific metadanych istotnych dla Gemini.
 4. **`handleNoToolCalls` ma być aktywny.** Jeśli agent spróbuje zakończyć rozmowę bez użycia narzędzi i bez sukcesu, runner ma dopisać przypomnienie i zmusić go do dalszego działania zamiast kapitulować.
-5. **Adapter TTS ma być wymienialny, lecz interfejs ma być ascetyczny.** Jedna funkcja `synthesizeSpeech(text)` zwraca `{ base64, format }`. Reszta świata nie zna providera.
+5. **Osobny endpoint TTS nie jest używany.** Pomocniczy klient mowy generuje audio natywnie przez `chat.completions`, dzięki czemu warstwa narzędzia nie potrzebuje dodatkowego API `/audio/speech`.
 6. **Audio przychodzące od operatora należy przekazać modelowi w postaci binarnej, nie transkrybować go na siłę.** Gemini 3 Flash umie rozumieć audio; dodatkowa STT byłaby kosztem, opóźnieniem i miejscem potencjalnej mutacji sensu.
 7. **Flagę należy łapać programowo w każdym wywołaniu huba.** Nie czekamy, aż model łaskawie rozpozna triumf.
 8. **Każda wypowiedź wychodząca ma być krótka i realistyczna.** To nie traktat o logistyce, tylko telefon do operatora, który ma nie nabrać podejrzeń.
