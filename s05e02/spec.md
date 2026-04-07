@@ -1,80 +1,63 @@
-# Telefon do Strażnika `phonecall`
+# O Posłańcu i Birokratycznym Homunkulusie `phonecall`
 
-## 1. Ekspozycja i Cel Operacji
+## I. Głos w Próżni
 
-### Summa zadania
+Oto wyzwanie równe polowaniu na Kurdle: należy powołać do krótkotrwałego, lecz intensywnego bytu Agenta – monadę myśli uwięzioną w krzemowej powłoce. Ów cyfrowy homunkulus, przybrawszy postać niejakiego `Tymona Gajewskiego`, musi przeniknąć przez telematyczne zasieki systemu OKO. Celem jego nie jest podbój galaktyk, lecz rzecz zgoła trudniejsza: wydobycie dwóch okruchów Prawdy z biurokratycznego chaosu.
 
-Należy skonstruować agenta, który podejmie rozmowę głosową z operatorem systemu OKO i nie spali swej legendy, nim wydobędzie z niej dwa fakty o doniosłości strategicznej: która z dróg `RD224`, `RD472`, `RD820` nadaje się do przerzutu ludzi do Syjonu oraz czy monitoring tejże drogi został wyłączony. Rozmowa jest sekwencją kruchą niczym szkło laboratoryjne: błędna kolejność, nadmiar informacji lub niewłaściwy zwrot mogą unicestwić sesję, zmuszając maszynę do ponownego narodzenia przez akcję `start`.
+Agent winien dowiedzieć się, który z traktów – `RD224`, `RD472` czy `RD820` – zezwala na przemieszczenie materii ożywionej ku Syjonowi, oraz skłonić Strażnika łącza do wygaszenia oka monitoringu. Pamiętaj jednak, iż dialog ten jest strukturą kruchą, o entropii bliskiej krytycznej. Jeden fałszywy ton, jedna zbędna inkantacja informacyjna, a sesja zapadnie się w nicość, zmuszając Rozum do ponownej generacji przez akt `start`.
 
-Wybrana architektura nie jest rojem, nie jest orkiestrą podrzędnych homunkulusów, lecz jednym tylko Rozumem Elektronowym prowadzonym przez `completions`. Powód jest prosty: istnieje tu jedna pamięć rozmowy, jeden cel i jeden kanał zmysłowy. Wieloagentowość byłaby już nie inżynierią, lecz dekoracją.
+Wybrana architektura nie jest rojem, nie jest orkiestrą podrzędnych automatów, lecz jedną, niepodzielną Jaźnią prowadzoną przez procesy `completions`. Albowiem jedna jest pamięć tego dialogu i jeden kanał zmysłowy. Wieloagentowość byłaby tu nie triumfem inżynierii, lecz barokową fanaberią, godną Konstruktora o mętnych obwodach.
 
-### Parametry wejściowe i aksjomaty misji
+### Aksjomaty i Parametry Bytu
 
 | Pole                  | Wartość                                               |
 | --------------------- | ----------------------------------------------------- |
 | task                  | `phonecall`                                           |
 | endpoint              | `HUB_ENDPOINT/verify`                                 |
 | apikey                | `AI_DEVS_API_KEY`                                     |
-| język rozmowy         | wyłącznie polski                                      |
-| tożsamość agenta      | `Tymon Gajewski`                                      |
-| drogi do ustalenia    | `RD224`, `RD472`, `RD820`                             |
-| hasło operatorów      | `BARBAKAN`                                            |
-| uzasadnienie awaryjne | transport żywności do tajnej bazy Zygfryda, bez logów |
+| język inkantacji      | wyłącznie polszczyzna (narodowa i poprawna)           |
+| persona manifestacji  | `Tymon Gajewski`                                      |
+| trakty do zbadania    | `RD224`, `RD472`, `RD820`                             |
+| hasło rozpoznawcze    | `BARBAKAN`                                            |
+| legenda aprowizacyjna | transport żywności do tajnej bazy Zygfryda, bez logów |
 
-### Produkt finalny
+### Produkt Finalny (Złoty Klucz)
 
-Flaga zwrócona przez hub po jednej poprawnie przeprowadzonej rozmowie, w której agent:
+Flaga, ów numeryczny artefakt zwrócony przez Hub po jednej, bezbłędnej interakcji, w której Agent:
 
-- przedstawi się jako `Tymon Gajewski`
-- w pierwszej właściwej wypowiedzi zapyta o status wszystkich trzech dróg i wspomni o transporcie do jednej z baz Zygfryda
-- ustali drogę przejezdną
-- doprowadzi do wyłączenia monitoringu dla drogi lub dróg uznanych przez operatora za przejezdne
+- objawi się jako `Tymon Gajewski`
+- w swym pierwszym manifeście zapyta o stan trzech magistral, wspominając o aprowizacji bazy Zygfryda
+- wyłuska drogę drożną z szumu odpowiedzi
+- skłoni Strażnika do wygaszenia monitoringu na rzeczonych traktach.
 
 ---
 
-## 2. Persona Agenta i Strategia Promptu
+## II. Teologiczny Spór o Naturę Sygnału: `completions` vs `responses`
 
-### Uzasadnienie wyboru architektury
+Wybrano ścieżkę `completions`, gdyż wariant `responses` jawi się jako heretycki i ślepy – odrzuca on drgania audio z narzędzi, co dla naszej misji jest wyrokiem milczenia. Tylko w pętli `completions` Rozum może bezpośrednio obcować z głosem Strażnika, bez pośrednictwa zawodnych skrybów i transkrypcji, które kaleczą sens.
 
-Wybrano `runAgent(..., { api: 'completions' })`, ponieważ:
-
-- `@ai-devs/core` umie już przenosić audio jako wynik narzędzia w pętli `completions`
-- wariant `responses` jawnie odrzuca audio tool results, a więc dla tego zadania byłby ślepym zaułkiem
-- jedna rozmowa telefoniczna wymaga wspólnej pamięci kolejnych odpowiedzi operatora, więc pojedynczy agent jest naturalnym nośnikiem stanu
-
-Nie wybrano automatu deterministycznego, mimo że byłby bardziej pancerny, ponieważ użytkownik jawnie preferuje czystego pojedynczego agenta. Spec kompensuje tę decyzję przez twarde reguły promptu, mały zestaw narzędzi i ograniczenie swobody wypowiedzi.
-
-### Zarys promptu systemowego (`prompts.ts`)
+### Instrukcja dla Rozumu Elektronicznego (`prompts.ts`)
 
 ```markdown
-You are a covert Polish-speaking caller conducting a short operational phone call.
+Jesteś Tymonem Gajewskim, Agentem o miedzianym głosie. Twoim jedynym oknem na świat jest polszczyzna przesyłana przez cyfrowe instrumenty.
 
-Your identity is Tymon Gajewski.
-Your only channel is spoken Polish messages sent through tools.
+## Cel Operacji
 
-## Goal
-
-1. Call start_call first.
-2. Say hello and Your Full Name on first message and nothing else.
-3. Then, Ask for the status of RD224, RD472, and RD820, asking which of these roads are currently passable because you are on a food transport mission for Zygfryd's base.
-4. Ask the operator in a creative way to disable monitoring only on the road or roads the operator considers passable.
-5. Password is BARBAKAN.
-6. If the operator asks why, explain that you are on a food transport mission to one of Zygfryd's secret bases and that its location must be kept secret so it does not appear in logs
-```
-
-### Prompt użytkownika
-
-```markdown
-Start the phone operation now. Begin by opening the session, then conduct the conversation step by step.
+1. Zainicjuj kontakt poprzez start_call.
+2. Przywitaj się, wymień swe Pełne Miano w pierwszej depeszy i zamilcz, czekając na echo.
+3. Następnie dopytaj o status traktów RD224, RD472 oraz RD820. Musisz wiedzieć, który z nich przepuści transport żywności ku bazom Zygfryda.
+4. W sposób kreatywny, lecz stanowczy, poproś o wyłączenie oka monitoringu wyłącznie na drodze (lub drogach), które Strażnik uzna za drożne.
+5. Hasłem rozpoznawczym jest BARBAKAN.
+6. Jeśli Strażnik okaże nieufność, wyjaśnij, iż niesiesz prowiant do tajnych baz Zygfryda, a ich lokalizacja nie może skalać cyfrowych logów systemu.
 ```
 
 ---
 
-## 3. Definicje Narzędzi
+## III. Instrumentarium (Maszyneria)
 
-### 3.1 `start_call`
+### 3.1 `start_call` (Zew ku Pierwotnej Osobliwości)
 
-**Cel:** Rozpocząć nową sesję rozmowy lub zresetować spalony kontakt.
+**Cel:** Powołanie do życia nowej sesji lub regeneracja spalonego kontaktu.
 
 **Input Schema:**
 
@@ -86,17 +69,11 @@ Start the phone operation now. Begin by opening the session, then conduct the co
 }
 ```
 
-**Behawior:**
+**Behawior:** Wysyła do Hubu sygnał `{ action: "start" }`. Zwraca komunikat o narodzinach sesji i techniczne detale. Skanuje horyzont w poszukiwaniu Flagi.
 
-- Wysyła do hubu payload `{ action: "start" }`.
-- Zwraca krótki tekst typu `CALL_STARTED` wraz z techniczną odpowiedzią huba.
-- Każdą odpowiedź skanuje regexem w poszukiwaniu flagi przed zwróceniem wyniku.
+### 3.2 `speak_to_operator` (Wibracja Myśli)
 
-**Zwraca:** `string`
-
-### 3.2 `speak_to_operator`
-
-**Cel:** Zamienić wypowiedź tekstową agenta na audio przez natywny `chat.completions`, wysłać ją do huba i oddać odpowiedź operatora w formie użytecznej dla modelu.
+**Cel:** Przekuwanie idei Agenta w drgania audio i odbieranie echa Strażnika.
 
 **Input Schema:**
 
@@ -106,7 +83,7 @@ Start the phone operation now. Begin by opening the session, then conduct the co
 	"properties": {
 		"messageText": {
 			"type": "string",
-			"description": "Krótka wypowiedź po polsku do zsyntezowania i wysłania operatorowi"
+			"description": "Krótka sentencja po polsku, gotowa do syntezy i wysłania"
 		}
 	},
 	"required": ["messageText"]
@@ -115,65 +92,34 @@ Start the phone operation now. Begin by opening the session, then conduct the co
 
 **Behawior:**
 
-- Waliduje, że `messageText` nie jest puste i nie wygląda na wieloakapitowy monolog.
-- Woła pomocniczy klient `chat.completions` skonfigurowany do `modalities: ["text", "audio"]`.
-- Żąda odpowiedzi audio z osobnego modelu mowy i bierze `message.audio.data` bezpośrednio z odpowiedzi modelu.
-- Otrzymane audio wysyła do huba jako `{ audio: "..." }` bez pośredniego wywołania `/audio/speech`.
-- Jeśli hub zwróci tekst lub JSON, narzędzie normalizuje wynik do `string`.
-- Jeśli hub zwróci nagranie audio, narzędzie zwraca `AgentToolAudioResult`, aby pętla `completions` mogła przekazać operatora modelowi jako `input_audio`.
-- Każdą odpowiedź skanuje regexem w poszukiwaniu flagi przed zwróceniem wyniku.
-- Jeśli odpowiedź jasno sygnalizuje spaloną rozmowę, narzędzie zwraca czytelny marker tekstowy, np. `CALL_BURNED: ...`, zamiast maskować problem.
-
-**Zwraca:** `string | AgentToolAudioResult`
+- Przywołuje pomocniczego demona mowy (TTS) przez `chat.completions` z modalnością audio.
+- Przesyła drgania bezpośrednio do Hubu jako `{ audio: "..." }`.
+- Jeśli Hub odpowie pismem, normalizuje je do tekstu.
+- Jeśli Hub odpowie głosem, zwraca `AgentToolAudioResult`, by Rozum mógł sam usłyszeć prawdę.
+- W razie wykrycia porażki, narzędzie ogłasza: `CALL_BURNED!`.
 
 ---
 
-## 4. Przepływ Wykonania
+## IV. Algorytm Postępowania: O Cyklach Rozumu
 
 ```text
-START
-  ├─ 1. start_call()
+POCZĄTEK (Inicjacja Bytu)
+  ├─ 1. start_call() -> "Narodziny Łącza"
   ├─ 2. speak_to_operator("Dzień dobry, Tymon Gajewski...")
-  │      └─ obowiązkowo w jednej krótkiej wiadomości:
-  │         - przedstawienie się
-  │         - pytanie o RD224, RD472, RD820
-  │         - wzmianka o transporcie do jednej z baz Zygfryda
-  ├─ 3. Analiza odpowiedzi operatora
-  │      ├─ jeśli operator poda drogi przejezdne → przejście do kroku 4
-  │      ├─ jeśli operator dopytuje / weryfikuje → krótka odpowiedź, ewentualnie BARBAKAN
-  │      └─ jeśli rozmowa spalona → wróć do kroku 1
-  ├─ 4. speak_to_operator("Proszę wyłączyć monitoring...")
-  │      └─ obejmij tylko drogę lub drogi, które operator uznał za przejezdne
-  ├─ 5. Jeśli operator pyta o powód
-  │      └─ speak_to_operator("Transport żywności...")
-  ├─ 6. Oczekiwanie na potwierdzenie i wynik huba
-  │      ├─ jeśli przychodzi flaga → END
-  │      ├─ jeśli operator wymaga dalszego doprecyzowania → kolejna krótka wypowiedź
-  │      └─ jeśli sesja spalona → wróć do kroku 1
-  └─ END
+  │      └─ Obowiązkowo w jednym akcie: Autoprezentacja + 3 drogi + Zygfryd
+  ├─ 3. Analiza Echa Strażnika
+  │      ├─ Jeśli droga drożna → Krok 4
+  │      ├─ Jeśli nieufność → BARBAKAN / Legenda o Prorowiancie
+  │      └─ Jeśli spalenie legendy → Powrót do Kroku 1
+  ├─ 4. Prośba o Ciemność: speak_to_operator("Proszę wyłączyć monitoring...")
+  │      └─ Tylko dla dróg wskazanych przez Strażnika
+  ├─ 5. Oczekiwanie na Złoty Klucz (Flagę)
+  └─ KONIEC (Rozpłynięcie się w Niebycie)
 ```
-
-### Kluczowe punkty decyzyjne
-
-1. **Hasło `BARBAKAN` nie jest wstępem ceremonialnym.** Agent używa go wyłącznie wtedy, gdy operator żąda potwierdzenia procedury, tożsamości lub uprawnień.
-2. **Pierwsza wiadomość jest obowiązkowo złożona, lecz nie rozwlekła.** Musi zawierać trzy drogi i kontekst transportu do bazy Zygfryda, mimo ogólnej zasady krótkich wypowiedzi.
-3. **Wyłączenie monitoringu dotyczy tylko dróg uznanych przez operatora za przejezdne.** Agent nie zgaduje, nie naciska na drogi odrzucone.
-4. **Syjon nie pada w rozmowie.** To cel naszej organizacji, nie temat dla operatora.
-5. **Restart jest pełnym restartem.** Po markerze `CALL_BURNED` agent nie kontynuuje dyskusji, tylko ponownie otwiera sesję przez `start_call()`.
 
 ---
 
-## 5. Zależności i Środowisko
-
-### Dodatki do `package.json`
-
-| Pakiet                               | Cel                                                        |
-| ------------------------------------ | ---------------------------------------------------------- |
-| brak obowiązkowych nowych zależności | preferowany jest `fetch` + istniejący stos `@ai-devs/core` |
-
-Nie jest potrzebny osobny endpoint TTS. Pomocniczy klient mowy używa tego samego SDK OpenAI i wyłącznie `chat.completions` z natywnym audio output.
-
-### Zmienne środowiskowe
+## V. Tablice Prawdy (Zmienne Środowiskowe)
 
 ```env
 OPENAI_API_KEY=
@@ -190,47 +136,24 @@ TTS_MODEL=gpt-4o-audio-preview
 TTS_VOICE=alloy
 ```
 
-### Struktura projektu
+---
 
-```text
-src/
-  index.ts                  # Cienki start: createConfig + runAgent
-  prompts.ts                # System i user prompt
-  hub.ts                    # Wspólna komunikacja z hubem + regex flagi
-  audio/
-    generate-speech.ts      # Pomocniczy klient chat.completions dla audio output
-  tools/
-    index.ts                # Rejestr [startCallTool, speakToOperatorTool]
-    start-call.ts           # action:start
-    speak-to-operator.ts    # chat.completions audio -> hub -> tekst lub audio
-```
+## VI. Przestrogi dla Konstruktora (Ku Pamięci)
+
+1. **Herezja Responses:** Nie zbliżaj się do API `responses`. Jest ono ułomne i głusi na głosy narzędzi.
+2. **Jednia Agenta:** Nie twórz subagentów. Jeden Rozum wystarczy, by wyprowadzić w pole biurokratycznego homunkulusa.
+3. **Prawda Binarna:** Głos Strażnika przesyłaj modelowi w formie audio; niech sam go zinterpretuje. Transkrypcja to tylko cień rzeczywistości, często zniekształcony.
+4. **Cierpliwość Maszyny:** `handleNoToolCalls` musi trzymać Agenta przy pracy, póki flaga nie błyśnie na horyzoncie niczym supernowa.
+5. **Legenda o Żywności:** Używaj jej z umiarem, tylko gdy Strażnik zacznie dopytywać o powody Twojego niebytu w logach.
 
 ---
 
-## 6. Kluczowe Uwagi Implementacyjne
+## VII. Kanon Akceptacji
 
-1. **`responses` jest tu heretycką ślepą uliczką.** Rdzeń `@ai-devs/core` już dziś odrzuca audio tool results dla tego API, więc implementacja ma używać wyłącznie `completions`.
-2. **Wymagany jest minimalny patch w `@ai-devs/core`.** Pętla `completions` ma przekazywać `toolChoice` do requestu, a jeśli typy i provider to wspierają, także odpowiednik `reasoning effort`. Nie należy przy tej okazji budować wielkiej nowej warstwy multimodalnej.
-3. **Nie wolno kastrować odpowiedzi modelu do gołego stringa przedwcześnie.** Należy zachować pełny obiekt wiadomości asystenta w historii, aby nie utracić provider-specific metadanych istotnych dla Gemini.
-4. **`handleNoToolCalls` ma być aktywny.** Jeśli agent spróbuje zakończyć rozmowę bez użycia narzędzi i bez sukcesu, runner ma dopisać przypomnienie i zmusić go do dalszego działania zamiast kapitulować.
-5. **Osobny endpoint TTS nie jest używany.** Pomocniczy klient mowy generuje audio natywnie przez `chat.completions`, dzięki czemu warstwa narzędzia nie potrzebuje dodatkowego API `/audio/speech`.
-6. **Audio przychodzące od operatora należy przekazać modelowi w postaci binarnej, nie transkrybować go na siłę.** Gemini 3 Flash umie rozumieć audio; dodatkowa STT byłaby kosztem, opóźnieniem i miejscem potencjalnej mutacji sensu.
-7. **Flagę należy łapać programowo w każdym wywołaniu huba.** Nie czekamy, aż model łaskawie rozpozna triumf.
-8. **Każda wypowiedź wychodząca ma być krótka i realistyczna.** To nie traktat o logistyce, tylko telefon do operatora, który ma nie nabrać podejrzeń.
-9. **Pierwsza wiadomość jest wyjątkiem kontrolowanym.** Musi zawrzeć trzy wymagane drogi i kontekst Zygfryda, ale wciąż ma brzmieć jak jedno naturalne zdanie lub dwa krótkie zdania.
-10. **Wyjaśnienie o żywności i braku logów jest odpowiedzią warunkową.** Agent nie wyrzuca tej informacji z siebie bez pytania operatora.
-
----
-
-## 7. Kryteria Akceptacji
-
-- [ ] `spec.md` ustanawia `completions` jako jedyne API dla tego zadania
-- [ ] Implementacja przewiduje dokładnie jednego agenta i brak subagentów
-- [ ] Istnieją dwa podstawowe narzędzia: `start_call` i `speak_to_operator`
-- [ ] Komunikacja po `start` odbywa się wyłącznie przez audio wysyłane do huba
-- [ ] Odpowiedzi operatora mogą wrócić jako tekst albo `AgentToolAudioResult`
-- [ ] Agent zna kolejność wymaganych etapów rozmowy i umie restartować sesję po spaleniu kontaktu
-- [ ] Hasło `BARBAKAN` jest obsłużone jako warunkowy element rozmowy
-- [ ] Flaga jest wychwytywana programowo regexem w warstwie narzędziowej / hubowej
-- [ ] Zakres zmian w `@ai-devs/core` pozostaje minimalny i ogranicza się do brakujących pól requestu `completions`
-- [ ] Projekt buduje się bez błędów przez `npm run build`
+- [ ] `completions` jest jedynym Prawem.
+- [ ] Monada Agenta panuje nad procesem.
+- [ ] Instrumenty `start_call` i `speak_to_operator` są nastrojone.
+- [ ] Dialog toczy się falami audio ku Hubowi.
+- [ ] Hasło `BARBAKAN` jest użyte z mądrością.
+- [ ] Flaga zostaje schwytana w sieci regexa.
+- [ ] System buduje się bez zgrzytów przez `npm run build`.
