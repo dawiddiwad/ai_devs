@@ -1,5 +1,7 @@
 import { logger } from './logger.js'
 
+const base64DataUriPattern = /data:[^;]+;base64,[A-Za-z0-9+/]+=*/u
+
 function normalizeErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error)
 }
@@ -17,7 +19,7 @@ export async function safelyObserve<T>(hookName: string, callback: () => Promise
 }
 
 export function truncateString(value: string, maxLength: number): string {
-	if (value.length <= maxLength) {
+	if (value.length <= maxLength || base64DataUriPattern.test(value)) {
 		return value
 	}
 

@@ -276,4 +276,45 @@ describe('createLangfuseObservability', () => {
 		})
 		expect(processorForceFlushMock).toHaveBeenCalledTimes(1)
 	})
+
+	it('preserves full JPEG data URIs in sanitized model requests', async () => {
+		const { createLangfuseObservability } = await import('../src/langfuse-observability.js')
+		const observability = createLangfuseObservability({
+			publicKey: 'pk-lf',
+			secretKey: 'sk-lf',
+		})
+		const imageUrl = `data:image/jpeg;base64,${'A'.repeat(5000)}`
+
+		await observability.onModelStart?.({
+			api: 'responses',
+			runHandle: undefined,
+			model: 'gpt-test',
+			iterationIndex: 0,
+			request: {
+				model: 'gpt-test',
+				input: [
+					{
+						role: 'user',
+						content: [{ type: 'input_image', image_url: imageUrl }],
+					},
+				],
+			},
+		})
+
+		expect(startObservationMock).toHaveBeenCalledWith(
+			'openai.responses.create',
+			expect.objectContaining({
+				input: {
+					model: 'gpt-test',
+					input: [
+						{
+							role: 'user',
+							content: [{ type: 'input_image', image_url: imageUrl }],
+						},
+					],
+				},
+			}),
+			expect.objectContaining({ asType: 'generation' })
+		)
+	})
 })
