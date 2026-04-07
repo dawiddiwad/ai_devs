@@ -88,7 +88,7 @@ await runAgent(config, {
 
 ## Escape Hatch — Custom Agent Loops
 
-If `runAgent` doesn't fit your use case—such as when building HTTP servers, batch pipelines, or requiring custom loop logic—you can import individual utilities directly:
+If `runAgent` doesn't fit your use case—such as when building HTTP servers, batch pipelines, or requiring custom loop logic—you can import individual utilities directly and wire your own loop:
 
 ```ts
 import { createConfig, logger, createOpenAIClient, defineAgentTool, captureFlag } from '@ai-devs/core'

@@ -63,8 +63,7 @@ await runAgent(config, {
 	reasoning: { effort: 'low' },
 })
 ```
-
-For custom agent behavior (HTTP servers, multi-agent), import individual utilities and wire your own loop.
+If `runAgent` doesn't fit your use case—such as when building HTTP servers, batch pipelines, or requiring custom loop logic—you can import individual utilities directly and wire your own loop.
 
 ## Security
 
