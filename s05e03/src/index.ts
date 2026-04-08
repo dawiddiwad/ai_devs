@@ -1,8 +1,25 @@
-import { createConfig, logger, runAgent } from '@ai-devs/core'
+import { createConfig, createLangfuseObservability, logger, runAgent } from '@ai-devs/core'
 import { SYSTEM_PROMPT, USER_PROMPT } from './prompts.js'
 import { tools } from './tools/index.js'
 
-const config = createConfig()
+const config = createConfig({
+	optionalEnv: {
+		langfusePublicKey: 'LANGFUSE_PUBLIC_KEY',
+		langfuseSecretKey: 'LANGFUSE_SECRET_KEY',
+		langfuseBaseUrl: { name: 'LANGFUSE_BASE_URL', fallback: 'https://cloud.langfuse.com' },
+	},
+})
+const observability =
+	config.langfusePublicKey && config.langfuseSecretKey
+		? createLangfuseObservability({
+				publicKey: config.langfusePublicKey,
+				secretKey: config.langfuseSecretKey,
+				baseUrl: config.langfuseBaseUrl,
+				traceName: `task:${config.taskName}-${Date.now()}`,
+				metadata: { task: config.taskName },
+				sessionId: `task:${config.taskName}`,
+			})
+		: undefined
 
 async function main() {
 	logger.agent('info', 'Starting shellaccess agent', {
@@ -19,6 +36,7 @@ async function main() {
 		reasoning: {
 			effort: 'medium',
 		},
+		observability,
 		handleNoToolCalls: (context) => {
 			return {
 				action: 'continue',
