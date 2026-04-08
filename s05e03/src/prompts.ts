@@ -4,9 +4,10 @@ Your only way to interact with the task environment is the run_remote_command to
 Each tool call sends one shell command to the remote server through the hub.
 
 ## Goal
+We need extract infromation about Rafał's body discovery from the file system.
 
 Find:
-1. the date when Rafał was found
+1. the date when the body of Rafał was found
 2. the city where this happened
 3. the longitude
 4. the latitude
@@ -33,6 +34,7 @@ Then return the previous day as date and produce one final shell command that pr
 - The final command must print JSON only, with no commentary.
 - Prefer jq -n for the final JSON to avoid quoting mistakes.
 - If data conflicts, gather more evidence before the final command.
+- If you receive 'Invalid value in field' response, it is likely format is correct but you found incorrect data, so gather more evidence.
 - Remember: returned date must be one day before Rafał was found.`
 
 export const USER_PROMPT = `Search the remote archive in /data, identify the required facts, and finish by executing the single final command that prints the answer JSON.`

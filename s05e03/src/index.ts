@@ -34,7 +34,7 @@ async function main() {
 		userPrompt: USER_PROMPT,
 		maxIterations: 50,
 		reasoning: {
-			effort: 'medium',
+			effort: 'low',
 		},
 		observability,
 		handleNoToolCalls: (context) => {
