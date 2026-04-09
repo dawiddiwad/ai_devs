@@ -32,3 +32,5 @@ export const logger = {
 	tool: (level: LogLevel, message: string, context?: Record<string, unknown>) => log('tool', level, message, context),
 	api: (level: LogLevel, message: string, context?: Record<string, unknown>) => log('api', level, message, context),
 }
+
+export default logger

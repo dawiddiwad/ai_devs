@@ -1,0 +1,43 @@
+{
+	"name": "s05e04-goingthere-mastra-edition",
+	"version": "1.0.0",
+	"description": "AI Devs S05E04 goingthere",
+	"license": "MIT",
+	"author": "Dawid Dobrowolski",
+	"type": "commonjs",
+	"main": "dist/index.js",
+	"scripts": {
+		"prod": "npm run build && mastra start",
+		"dev": "npm run lint:check && npm run format:check && mastra dev",
+		"build": "npm run lint:check && npm run format:check && mastra build",
+		"build:core": "pnpm --filter @ai-devs/core run build",
+		"lint:check": "eslint .",
+		"lint:fix": "eslint . --fix",
+		"format:check": "prettier . --check",
+		"format:fix": "prettier . --write"
+	},
+	"dependencies": {
+		"@ai-devs/core": "workspace:*",
+		"@mastra/core": "^1.24.1",
+		"@mastra/duckdb": "^1.1.1",
+		"@mastra/editor": "^0.7.15",
+		"@mastra/libsql": "^1.8.0",
+		"@mastra/loggers": "^1.1.1",
+		"@mastra/memory": "^1.15.0",
+		"@mastra/observability": "^1.9.0",
+		"axios": "^1.13.1",
+		"dotenv": "^17.4.0",
+		"mastra": "^1.5.0",
+		"zod": "^4.3.6"
+	},
+	"devDependencies": {
+		"@eslint/js": "^9.39.4",
+		"@types/node": "^25.4.0",
+		"eslint": "^9.39.4",
+		"eslint-config-prettier": "^10.1.8",
+		"prettier": "^3.7.4",
+		"ts-node": "^10.9.2",
+		"typescript": "^5.9.3",
+		"typescript-eslint": "^8.56.1"
+	}
+}
