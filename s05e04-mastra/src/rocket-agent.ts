@@ -4,7 +4,6 @@ import { getRadioHintTool } from './tools/get-radio-hint'
 import { moveRocketTool } from './tools/move-rocket'
 import { startGameTool } from './tools/start-game'
 import { Memory } from '@mastra/memory'
-import { LibSQLStore } from '@mastra/libsql'
 
 const INSTRUCTIONS = `You are an autonomous agent solving the "goingthere" navigation task. Your primary goal is to navigate the simulated rocket successfully to the base in Grudziądz.
 
@@ -37,10 +36,5 @@ export const rocketAgent = new Agent({
 		},
 	},
 	maxRetries: 3,
-	memory: new Memory({
-		storage: new LibSQLStore({
-			id: 'rocket-agent-memory',
-			url: 'file:./rocket-agent.db',
-		}),
-	}),
+	memory: new Memory(),
 })

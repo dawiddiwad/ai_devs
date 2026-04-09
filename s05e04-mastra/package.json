@@ -8,8 +8,8 @@
 	"main": "dist/index.js",
 	"scripts": {
 		"prod": "npm run build && mastra start",
-		"dev": "npm run lint:check && npm run format:check && mastra dev",
-		"build": "npm run lint:check && npm run format:check && mastra build",
+		"dev": "npm run lint:check && npm run format:fix && mastra dev",
+		"build": "npm run lint:check && npm run format:fix && mastra build",
 		"build:core": "pnpm --filter @ai-devs/core run build",
 		"lint:check": "eslint .",
 		"lint:fix": "eslint . --fix",

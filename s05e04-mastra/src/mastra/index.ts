@@ -22,7 +22,10 @@ export const mastra = new Mastra({
 			url: 'file:./rocket-agent.db',
 		}),
 		domains: {
-			observability: await new DuckDBStore().getStore('observability'),
+			observability: await new DuckDBStore({
+				id: 'observability-storage',
+				path: './observability.duckdb',
+			}).getStore('observability'),
 		},
 	}),
 	logger: new PinoLogger({
