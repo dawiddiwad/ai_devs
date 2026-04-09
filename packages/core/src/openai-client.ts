@@ -5,5 +5,6 @@ export function createOpenAIClient(config: Pick<CoreConfig, 'openaiApiKey' | 'op
 	return new OpenAI({
 		apiKey: config.openaiApiKey,
 		baseURL: config.openaiBaseUrl,
+		maxRetries: 0,
 	})
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentTool, AgentToolResult } from '../src/index.js'
 import { runCompletionsLoop } from '../src/completions-loop.js'
 
@@ -34,6 +34,10 @@ function createTool(name: string, result: AgentToolResult): AgentTool {
 }
 
 describe('runCompletionsLoop', () => {
+	afterEach(() => {
+		vi.useRealTimers()
+	})
+
 	it('returns the final message when there are no tool calls', async () => {
 		const client = createClientMock()
 		client.chatCompletionsCreate.mockResolvedValueOnce({
@@ -60,6 +64,41 @@ describe('runCompletionsLoop', () => {
 			flagCaptured: null,
 		})
 		expect(client.chatCompletionsCreate).toHaveBeenCalledTimes(1)
+	})
+
+	it('retries chat.completions.create on retryable OpenAI errors', async () => {
+		vi.useFakeTimers()
+		vi.spyOn(Math, 'random').mockReturnValue(0.5)
+
+		const client = createClientMock()
+		client.chatCompletionsCreate
+			.mockRejectedValueOnce({ status: 503, message: 'Service unavailable', name: 'InternalServerError' })
+			.mockResolvedValueOnce({
+				choices: [
+					{
+						message: {
+							role: 'assistant',
+							content: 'final answer',
+						},
+					},
+				],
+			})
+
+		const promise = runCompletionsLoop(client, 'model', 3, undefined, {
+			api: 'completions',
+			tools: [],
+			systemPrompt: 'system',
+			userPrompt: 'user',
+		})
+
+		await vi.runAllTimersAsync()
+
+		await expect(promise).resolves.toEqual({
+			output: { text: 'final answer' },
+			iterations: 1,
+			flagCaptured: null,
+		})
+		expect(client.chatCompletionsCreate).toHaveBeenCalledTimes(2)
 	})
 
 	it('requests native audio output and preserves previous audio ids across turns', async () => {

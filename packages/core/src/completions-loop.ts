@@ -8,6 +8,7 @@ import type {
 } from 'openai/resources/chat/completions'
 import { logger } from './logger.js'
 import { safelyObserve } from './observability.js'
+import { withOpenAIRetry } from './openai-retry.js'
 import { appendToolResultForCompletions, createToolResultAttachmentParts, getToolResultText } from './tool-result.js'
 import { captureFlag } from './verify.js'
 import { createOpenAIClient } from './openai-client.js'
@@ -581,7 +582,7 @@ export async function runCompletionsLoop(
 
 		let response: Awaited<ReturnType<typeof client.chat.completions.create>>
 		try {
-			response = await client.chat.completions.create(request)
+			response = await withOpenAIRetry('chat.completions.create', () => client.chat.completions.create(request))
 			await safelyObserve(
 				'onModelEnd',
 				() =>

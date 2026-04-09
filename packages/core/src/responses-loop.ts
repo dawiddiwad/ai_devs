@@ -1,6 +1,7 @@
 import type { ResponseInput, ResponseOutputAudio, Tool } from 'openai/resources/responses/responses'
 import { logger } from './logger.js'
 import { safelyObserve } from './observability.js'
+import { withOpenAIRetry } from './openai-retry.js'
 import { getToolResultText, serializeToolResultForResponses } from './tool-result.js'
 import { captureFlag } from './verify.js'
 import { createOpenAIClient } from './openai-client.js'
@@ -435,12 +436,14 @@ export async function runResponsesLoop(
 	}
 
 	const toolDefs = config.tools.map((tool) => tool.definition) satisfies Tool[]
-	const conversation = await client.conversations.create({
-		items: [
-			{ role: 'system', content: config.systemPrompt },
-			{ role: 'user', content: config.userPrompt },
-		],
-	})
+	const conversation = await withOpenAIRetry('conversations.create', () =>
+		client.conversations.create({
+			items: [
+				{ role: 'system', content: config.systemPrompt },
+				{ role: 'user', content: config.userPrompt },
+			],
+		})
+	)
 
 	let state: ResponsesLoopState = {
 		lastOutput: createEmptyOutput(),
@@ -474,7 +477,7 @@ export async function runResponsesLoop(
 
 		let response: Awaited<ReturnType<typeof client.responses.create>>
 		try {
-			response = await client.responses.create(request)
+			response = await withOpenAIRetry('responses.create', () => client.responses.create(request))
 			await safelyObserve(
 				'onModelEnd',
 				() =>

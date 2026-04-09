@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentTool, AgentToolResult } from '../src/index.js'
 import { runResponsesLoop } from '../src/responses-loop.js'
 
@@ -38,6 +38,10 @@ function createTool(name: string, result: AgentToolResult): AgentTool {
 }
 
 describe('runResponsesLoop', () => {
+	afterEach(() => {
+		vi.useRealTimers()
+	})
+
 	it('returns the final message when there are no tool calls', async () => {
 		const client = createClientMock()
 		client.responsesCreate.mockResolvedValueOnce({
@@ -63,6 +67,73 @@ describe('runResponsesLoop', () => {
 		})
 		expect(client.conversationsCreate).toHaveBeenCalledTimes(1)
 		expect(client.responsesCreate).toHaveBeenCalledTimes(1)
+	})
+
+	it('retries conversation creation on retryable OpenAI errors', async () => {
+		vi.useFakeTimers()
+		vi.spyOn(Math, 'random').mockReturnValue(0.5)
+
+		const client = createClientMock()
+		client.conversationsCreate
+			.mockRejectedValueOnce({ status: 503, message: 'Service unavailable', name: 'InternalServerError' })
+			.mockResolvedValueOnce({ id: 'conversation-1' })
+		client.responsesCreate.mockResolvedValueOnce({
+			output: [
+				{
+					type: 'message',
+					content: [{ type: 'output_text', text: 'final answer' }],
+				},
+			],
+		})
+
+		const promise = runResponsesLoop(client, 'model', 3, undefined, {
+			api: 'responses',
+			tools: [],
+			systemPrompt: 'system',
+			userPrompt: 'user',
+		})
+
+		await vi.runAllTimersAsync()
+
+		await expect(promise).resolves.toEqual({
+			output: { text: 'final answer' },
+			iterations: 1,
+			flagCaptured: null,
+		})
+		expect(client.conversationsCreate).toHaveBeenCalledTimes(2)
+	})
+
+	it('retries responses.create on retryable OpenAI errors', async () => {
+		vi.useFakeTimers()
+		vi.spyOn(Math, 'random').mockReturnValue(0.5)
+
+		const client = createClientMock()
+		client.responsesCreate
+			.mockRejectedValueOnce({ status: 429, message: 'Rate limit exceeded', name: 'RateLimitError' })
+			.mockResolvedValueOnce({
+				output: [
+					{
+						type: 'message',
+						content: [{ type: 'output_text', text: 'final answer' }],
+					},
+				],
+			})
+
+		const promise = runResponsesLoop(client, 'model', 3, undefined, {
+			api: 'responses',
+			tools: [],
+			systemPrompt: 'system',
+			userPrompt: 'user',
+		})
+
+		await vi.runAllTimersAsync()
+
+		await expect(promise).resolves.toEqual({
+			output: { text: 'final answer' },
+			iterations: 1,
+			flagCaptured: null,
+		})
+		expect(client.responsesCreate).toHaveBeenCalledTimes(2)
 	})
 
 	it('rejects direct native audio output requests in the responses loop', async () => {
