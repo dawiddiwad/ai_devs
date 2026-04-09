@@ -14,7 +14,7 @@ function sleep(delayMs: number) {
 function calculateExponentialBackoffDelay(attempt: number, baseDelay: number = 1000, maxDelay: number = 30000): number {
 	const delay = Math.min(baseDelay * 2 ** attempt, maxDelay)
 	const jitter = Math.random() * 1000
-	return delay + jitter
+	return Math.round(delay + jitter)
 }
 
 export async function retry<T>({ label, attempts, delayMs, operation }: RetryOptions<T>): Promise<T> {
@@ -36,7 +36,7 @@ export async function retry<T>({ label, attempts, delayMs, operation }: RetryOpt
 
 			if (attempt < attempts) {
 				const nextDelay = calculateExponentialBackoffDelay(attempt, delayMs)
-				logger.tool('info', `Waiting before next retry attempt`, {
+				logger.tool('info', `Waiting with backoff and jitter before next retry attempt...`, {
 					label,
 					attempt,
 					delayMs: nextDelay,

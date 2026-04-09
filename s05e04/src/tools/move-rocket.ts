@@ -1,7 +1,32 @@
 import { createConfig, defineAgentTool, logger, verifyAnswer } from '@ai-devs/core'
+import { AxiosResponse } from 'axios'
 import { z } from 'zod/v4'
 
 const config = createConfig()
+
+export const filterHupResponse = (response: AxiosResponse): { repeat: boolean; reason?: string } => {
+	const responseAsString = JSON.stringify(response.data)
+
+	if (responseAsString.length > 1000) {
+		return { repeat: true, reason: `Response too long to display with ${responseAsString.length} characters` }
+	}
+
+	if (response.status >= 400) {
+		return {
+			repeat: true,
+			reason: `Frequency scanner returned error with status ${response.status}, details: ${responseAsString}`,
+		}
+	}
+
+	if (responseAsString.toLocaleLowerCase().includes('crash')) {
+		return {
+			repeat: true,
+			reason: `Rocket crashed, please restart, details: ${responseAsString}`,
+		}
+	}
+
+	return { repeat: false }
+}
 
 export const moveRocketTool = defineAgentTool({
 	name: 'move_rocket',

@@ -107,6 +107,7 @@ export function createConfig(
 			return process.env['OPENAI_TEMPERATURE'] ? parseFloat(process.env['OPENAI_TEMPERATURE']) : undefined
 		}),
 		aiDevsApiKey: resolveOverride(overrides, 'aiDevsApiKey', () => requireEnv('AI_DEVS_API_KEY')),
+		hubEndpoint: resolveOverride(overrides, 'hubEndpoint', () => requireEnv('AI_DEVS_HUB_ENDPOINT')),
 		verifyEndpoint: resolveOverride(
 			overrides,
 			'verifyEndpoint',

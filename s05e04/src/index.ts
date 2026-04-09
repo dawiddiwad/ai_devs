@@ -24,7 +24,7 @@ const observability =
 async function main() {
 	logger.agent('info', 'Starting task', { task: config.taskName })
 	await runAgent(config, {
-		api: 'completions',
+		api: 'responses',
 		tools,
 		observability,
 		systemPrompt: SYSTEM_PROMPT,
@@ -34,8 +34,8 @@ async function main() {
 		reasoning: { effort: 'low' },
 		handleNoToolCalls: (context) => ({
 			action: 'continue',
-			messages: [
-				...context.messages,
+			input: [
+				...context.input,
 				{
 					role: 'user',
 					content: 'Continue using the available tools until the flag is captured. Do not stop early.',

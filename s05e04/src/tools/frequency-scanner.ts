@@ -3,12 +3,9 @@ import { createConfig, defineAgentTool, logger } from '@ai-devs/core'
 import { z } from 'zod/v4'
 import { retry } from '../utils/retry.js'
 import { createHash } from 'crypto'
+import { filterHupResponse } from './move-rocket.js'
 
 const config = createConfig()
-
-function getHubBaseUrl() {
-	return config.verifyEndpoint.replace(/\/verify\/?$/, '')
-}
 
 function stringifyUnknown(value: unknown): string {
 	if (typeof value === 'string') {
@@ -62,28 +59,12 @@ export const frequencyScannerTool = defineAgentTool({
 				operation: async () => {
 					if (action === 'listen') {
 						const response = await axios.get(
-							`${getHubBaseUrl()}/api/frequencyScanner?key=${encodeURIComponent(config.aiDevsApiKey)}`,
+							`${config.hubEndpoint}/api/frequencyScanner?key=${encodeURIComponent(config.aiDevsApiKey)}`,
 							{ validateStatus: () => true }
 						)
 
-						if (JSON.stringify(response.data).toLocaleLowerCase().includes('crash')) {
-							return `rocket crashed, please restart, response: ${JSON.stringify(response.data)}`
-						}
-
-						if (JSON.stringify(response.data).length > 1000) {
-							throw new Error(
-								`listen response too long to display with ${JSON.stringify(response.data).length} characters`
-							)
-						}
-
-						logger.api('info', 'Received frequency scanner listen response', {
-							response: JSON.stringify(response.data),
-						})
-
-						if (response.status >= 400) {
-							throw new Error(
-								`Frequency scanner listen returned status ${response.status} and data ${JSON.stringify(response.data)}`
-							)
+						if (filterHupResponse(response).repeat) {
+							throw new Error(filterHupResponse(response).reason)
 						}
 
 						logger.api('info', 'Received frequency listen response', {
@@ -105,20 +86,13 @@ export const frequencyScannerTool = defineAgentTool({
 							frequency: disarmPayload.frequency,
 							disarmHash: disarmPayload.disarmHash,
 						})
-						const response = await axios.post(`${getHubBaseUrl()}/api/frequencyScanner`, disarmPayload, {
+
+						const response = await axios.post(`${config.hubEndpoint}/api/frequencyScanner`, disarmPayload, {
 							validateStatus: () => true,
 						})
 
-						if (JSON.stringify(response.data).length > 1000) {
-							throw new Error(
-								`Disarm response too long to display with ${JSON.stringify(response.data).length} characters`
-							)
-						}
-
-						if (response.status >= 400) {
-							throw new Error(
-								`Frequency scanner disarm returned status ${response.status} and data ${JSON.stringify(response.data)}`
-							)
+						if (filterHupResponse(response).repeat) {
+							throw new Error(filterHupResponse(response).reason)
 						}
 
 						logger.api('info', 'Received frequency scanner disarm response', {
