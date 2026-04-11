@@ -1,37 +1,50 @@
-import type { AxiosResponse } from 'axios'
+import { logger } from '@ai-devs/core'
 
-export function stringifyUnknown(value: unknown): string {
-	if (typeof value === 'string') {
-		return value
-	}
-
-	try {
-		return JSON.stringify(value)
-	} catch {
-		return String(value)
-	}
+interface RetryOptions<T> {
+	label: string
+	attempts: number
+	delayMs: number
+	operation: (attempt: number) => Promise<T>
 }
 
-export function filterHupResponse(response: AxiosResponse): { repeat: boolean; reason?: string } {
-	const responseAsString = JSON.stringify(response.data)
+function sleep(delayMs: number) {
+	return new Promise((resolve) => setTimeout(resolve, delayMs))
+}
 
-	if (responseAsString.length > 1000) {
-		return { repeat: true, reason: `Response too long to display with ${responseAsString.length} characters` }
-	}
+function calculateExponentialBackoffDelay(attempt: number, baseDelay = 1000, maxDelay = 30000): number {
+	const delay = Math.min(baseDelay * 2 ** attempt, maxDelay)
+	const jitter = Math.random() * 1000
+	return Math.round(delay + jitter)
+}
 
-	if (response.status >= 400) {
-		return {
-			repeat: true,
-			reason: `Frequency scanner returned error with status ${response.status}, details: ${responseAsString}`,
+export async function retry<T>({ label, attempts, delayMs, operation }: RetryOptions<T>): Promise<T> {
+	let lastError: unknown = null
+
+	for (let attempt = 1; attempt <= attempts; attempt += 1) {
+		try {
+			return await operation(attempt)
+		} catch (error) {
+			lastError = error
+			const errorMessage = error instanceof Error ? error.message : String(error)
+
+			logger.tool('warn', 'Retryable operation failed', {
+				label,
+				attempt,
+				attempts,
+				error: errorMessage,
+			})
+
+			if (attempt < attempts) {
+				const nextDelay = calculateExponentialBackoffDelay(attempt, delayMs)
+				logger.tool('info', 'Waiting with backoff and jitter before next retry attempt...', {
+					label,
+					attempt,
+					delayMs: nextDelay,
+				})
+				await sleep(nextDelay)
+			}
 		}
 	}
 
-	if (responseAsString.toLocaleLowerCase().includes('crash')) {
-		return {
-			repeat: true,
-			reason: `Rocket crashed, please restart, details: ${responseAsString}`,
-		}
-	}
-
-	return { repeat: false }
+	throw lastError ?? new Error(`Operation failed: ${label}`)
 }

@@ -6,17 +6,17 @@ import { DuckDBStore } from '@mastra/duckdb'
 import { LibSQLStore } from '@mastra/libsql'
 import { PinoLogger } from '@mastra/loggers'
 import { Observability, DefaultExporter, CloudExporter, SensitiveDataFilter } from '@mastra/observability'
-import { calculateSyncRatioTool } from '../tools/calculate-sync-ratio'
-import { frequencyScannerTool } from '../tools/frequency-scanner'
-import { getRadioHintTool } from '../tools/get-radio-hint'
-import { lookupProtectionLevelTool } from '../tools/lookup-protection-level'
-import { moveRocketTool } from '../tools/move-rocket'
-import { startGameTool } from '../tools/start-game'
+import { calculateSyncRatioTool } from '../tools/timetravel/calculate-sync-ratio'
+import { frequencyScannerTool } from '../tools/rocket/frequency-scanner'
+import { getRadioHintTool } from '../tools/rocket/get-radio-hint'
+import { lookupProtectionLevelTool } from '../tools/timetravel/lookup-protection-level'
+import { moveRocketTool } from '../tools/rocket/move'
+import { startGameTool } from '../tools/rocket/start-game'
 import { MastraEditor } from '@mastra/editor'
-import { timetravelConfigureTool } from '../tools/timetravel-configure'
-import { timetravelGetConfigTool } from '../tools/timetravel-get-config'
-import { timetravelHelpTool } from '../tools/timetravel-help'
-import { timetravelResetTool } from '../tools/timetravel-reset'
+import { timetravelConfigureTool } from '../tools/timetravel/configure'
+import { timetravelGetConfigTool } from '../tools/timetravel/get-config'
+import { timetravelHelpTool } from '../tools/timetravel/help'
+import { timetravelResetTool } from '../tools/timetravel/reset'
 
 export const mastra = new Mastra({
 	tools: {
@@ -37,7 +37,7 @@ export const mastra = new Mastra({
 		id: 'composite-storage',
 		default: new LibSQLStore({
 			id: 'mastra-storage',
-			url: 'file:./rocket-agent.db',
+			url: 'file:./agent.db',
 		}),
 		domains: {
 			observability: await new DuckDBStore({
@@ -47,18 +47,16 @@ export const mastra = new Mastra({
 		},
 	}),
 	logger: new PinoLogger({
-		name: 'RocketAgent',
+		name: 'MastraLogger',
 		level: 'info',
 	}),
 	observability: new Observability({
 		configs: {
 			default: {
-				serviceName: 'RocketAgent',
+				serviceName: 'MastraObservability',
 				exporters: [new DefaultExporter(), new CloudExporter()],
 				spanOutputProcessors: [new SensitiveDataFilter()],
 			},
 		},
 	}),
 })
-
-export default mastra

@@ -117,5 +117,5 @@ export function createConfig(
 		...requiredEnvConfig,
 		...optionalEnvConfig,
 		...overrides,
-	}
+	} satisfies CoreConfig
 }

@@ -3,7 +3,7 @@ import { createTool } from '@mastra/core/tools'
 import axios from 'axios'
 import { createConfig, logger } from '@ai-devs/core'
 import { z } from 'zod'
-import { retry } from '../utils/retry'
+import { retry } from '../shared'
 import { filterHupResponse, stringifyUnknown } from './shared'
 
 const config = createConfig()
@@ -16,8 +16,8 @@ export const frequencyScannerTool = createTool({
 		action: z
 			.enum(['listen', 'disarm'])
 			.describe('Whether to listen to the frequency scanner or to send a disarm command'),
-		frequency: z.number().nullable().describe('Required for disarm action, null for listen action'),
-		detectionCode: z.string().nullable().describe('Required for disarm action, null for listen action'),
+		frequency: z.number().nullable().optional().describe('Required for disarm action, null for listen action'),
+		detectionCode: z.string().nullable().optional().describe('Required for disarm action, null for listen action'),
 	}),
 	outputSchema: z.string().describe('The raw frequency scanner response payload'),
 	execute: async ({ action, frequency, detectionCode }) => {

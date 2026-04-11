@@ -1,6 +1,6 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
-import { getSyncRatio } from './timetravel-shared'
+import { getSyncRatio } from './shared'
 
 export const calculateSyncRatioTool = createTool({
 	id: 'calculate-sync-ratio',

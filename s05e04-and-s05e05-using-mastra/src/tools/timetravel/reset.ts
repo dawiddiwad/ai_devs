@@ -1,7 +1,7 @@
 import { createTool } from '@mastra/core/tools'
 import { logger } from '@ai-devs/core'
 import { z } from 'zod'
-import { submitTimetravelAnswer } from './timetravel-shared'
+import { submitTimetravelAnswer } from './shared'
 
 export const timetravelResetTool = createTool({
 	id: 'timetravel-reset',

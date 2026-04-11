@@ -9,7 +9,7 @@ export const moveRocketTool = createTool({
 	description: 'Move the rocket and return the raw response payload.',
 	inputSchema: z.object({
 		command: z
-			.enum(['go', 'left', 'right'])
+			.enum(['forward', 'left', 'right'])
 			.describe(
 				'The movement command to send to the rocket. Rules: right move to row + 1 and is only allowed if currently in row 1 or 2, left move to row - 1 and is only allowed if currently in row 2 or 3. Movement is not allowed if it would move the rocket out of bounds (row < 1 or row > 3) or into a row occupied by a rock.'
 			),
@@ -19,10 +19,14 @@ export const moveRocketTool = createTool({
 		logger.tool('info', 'Moving rocket', { command })
 
 		try {
-			const result = await verifyAnswer(config, { command })
+			const result = await verifyAnswer(
+				config,
+				{ command: command === 'forward' ? 'go' : command },
+				{ exitOnFlag: false }
+			)
 
 			logger.tool('info', 'Rocket move completed', {
-				command,
+				command: command,
 				response: JSON.stringify(result.responseText),
 			})
 

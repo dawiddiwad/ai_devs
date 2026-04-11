@@ -1168,6 +1168,7 @@ export interface CoreConfig {
 	openaiModel: string
 	openaiTemperature?: number
 	aiDevsApiKey: string
+	hubEndpoint: string
 	verifyEndpoint: string
 	taskName: string
 	[key: string]: unknown

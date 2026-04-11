@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { createConfig, verifyAnswer } from '@ai-devs/core'
-import { retry } from '../utils/retry'
+import { retry } from '../shared'
 
 const config = createConfig({
 	requiredEnv: {
@@ -15,7 +15,7 @@ const timetravelConfig = createConfig({ taskName: 'timetravel' })
 let protectionLevelsPromise: Promise<Map<number, number>> | null = null
 
 export function submitTimetravelAnswer(answer: unknown) {
-	return verifyAnswer(timetravelConfig, answer)
+	return verifyAnswer(timetravelConfig, answer, { exitOnFlag: false })
 }
 
 async function loadProtectionLevels(): Promise<Map<number, number>> {

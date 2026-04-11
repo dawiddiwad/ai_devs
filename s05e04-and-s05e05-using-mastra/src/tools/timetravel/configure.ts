@@ -1,7 +1,7 @@
 import { createTool } from '@mastra/core/tools'
 import { logger } from '@ai-devs/core'
 import { z } from 'zod'
-import { submitTimetravelAnswer } from './timetravel-shared'
+import { submitTimetravelAnswer } from './shared'
 
 const configureInputSchema = z.object({
 	param: z.enum(['day', 'month', 'year', 'syncRatio', 'stabilization']),
