@@ -6,8 +6,8 @@ import { timetravelConfigureTool } from './tools/timetravel/configure'
 import { timetravelGetConfigTool } from './tools/timetravel/get-config'
 import { timetravelHelpTool } from './tools/timetravel/help'
 import { timetravelResetTool } from './tools/timetravel/reset'
-import { AgentBrowser } from '@mastra/agent-browser'
 import { createConfig } from '@ai-devs/core/dist/config'
+import { StagehandBrowser } from '@mastra/stagehand'
 
 const config = createConfig()
 
@@ -15,29 +15,25 @@ const INSTRUCTIONS = `You are autonomous operator solving the "timetravel" task.
 
 Your scope is the API side plus frontend side in the browser.
 
-# Core workflow:
-## API configuration:
-1. Use timetravel-get-config or timetravel-help for current state.
-2. Verify device is in standby before changing API settings.
-3. Use calculate-sync-ratio for the chosen date.
-4. Configure year, month, day, then syncRatio via API.
-5. Use lookup-protection-level to get the required PWR value for the target year.
-6. Setup correct Sync Ratio
-7. Inspect configure responses for stabilization hints and configure if needed.
-8. Re-check device state after configuration.
+# How to prepare for a time jump:
+
+## Frontend setup:
+1. Verify device is in STANDBY before changing API settings.
+
+## Backend setup:
+1. Use 'get-config' for current state and 'help' for help.
+2. Use 'calculate-sync-ratio' for the chosen date.
+3. Use 'lookup-protection-level' to get the required PWR value for the target year.
+4. Use 'configure' tool to set year, month, day, then syncRatio via API.
 
 ## Frontend interaction:
 1. Use browser to setup PT-A/B switches, ACTIVE switch, PWR slider
-2. Make the jump in time when fluxDensity is 100% using ORB.
+2. Make the jump in time when flux density is 100% using ORB sphere button, machine cycle every 2 seconds between modes, jump can be made only in one of 4 modes, so you need to time it right.
 
 Manual switches:
 - future jump: PT-A off, PT-B on
 - past jump: PT-A on, PT-B off
 - tunnel: PT-A on, PT-B on
-
-How to jump using frontend:
-- Setup the configuration using
-- You can only click to jump in time when fluxDensity is 100% and the device is active.
 
 Communication:
 - Use timetravel-reset if the machine enters a bad state.
@@ -54,7 +50,7 @@ export const timeTravelAgent = new Agent({
 	name: 'Time Travel Agent',
 	instructions: INSTRUCTIONS,
 	model: 'openai/gpt-5.4-mini',
-	browser: new AgentBrowser({
+	browser: new StagehandBrowser({
 		onLaunch: async (browser) => {
 			browser.browser.navigateTo(`${config.hubEndpoint}/timetravel_preview`)
 		},

@@ -1,5 +1,5 @@
 {
-	"name": "s05e04-goingthere-mastra-edition",
+	"name": "s05e04-mastra",
 	"version": "1.0.0",
 	"description": "AI Devs S05E04 goingthere",
 	"license": "MIT",
@@ -26,6 +26,7 @@
 		"@mastra/loggers": "^1.1.1",
 		"@mastra/memory": "^1.15.0",
 		"@mastra/observability": "^1.9.0",
+		"@mastra/stagehand": "^0.1.0",
 		"axios": "^1.13.1",
 		"dotenv": "^17.4.0",
 		"mastra": "^1.5.0",
