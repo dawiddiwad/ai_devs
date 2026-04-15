@@ -9,7 +9,7 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "tsc --noEmit && eslint . && prettier . --check && tsc && pnpm test",
+		"build": "pnpm run compile:check && pnpm run lint:check && pnpm run format:fix && pnpm run test",
 		"dev": "tsc --watch",
 		"test": "vitest run",
 		"test:watch": "vitest",
